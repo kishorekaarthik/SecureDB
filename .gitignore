@@ -1,0 +1,21 @@
+# Ignore Python virtual environments
+venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore sensitive certs and keys
+*.pem
+keyvault.json
+
+# Ignore logs or temp files
+*.log
+*.db
+
+# Ignore environment config (if used)
+.env
+
+# System files
+.DS_Store
+Thumbs.db

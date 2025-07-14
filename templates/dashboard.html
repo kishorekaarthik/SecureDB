@@ -1,0 +1,16 @@
+<form method="post">
+  <h2>Enter Your Personal Secrets</h2>
+  Bank Account: <input name="bank_account"><br>
+  UPI: <input name="upi"><br>
+  PAN: <input name="pan"><br>
+  Notes: <textarea name="note"></textarea><br>
+  <button type="submit">Save</button>
+</form>
+
+{% if result %}
+  <h3>Decrypted:</h3>
+  Bank: {{ result.bank_account }}<br>
+  UPI: {{ result.upi }}<br>
+  PAN: {{ result.pan }}<br>
+  Note: {{ result.note }}<br>
+{% endif %}

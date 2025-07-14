@@ -1,0 +1,8 @@
+Flask
+pymongo
+pycryptodome
+bcrypt
+flask-jwt-extended
+flask-limiter
+marshmallow
+requests

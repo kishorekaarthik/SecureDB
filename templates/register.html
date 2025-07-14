@@ -1,0 +1,12 @@
+<form method="post">
+  <h2>Register</h2>
+  Username: <input name="username"><br>
+  Password: <input name="password" type="password"><br>
+  Role: 
+  <select name="role">
+    <option value="admin">Admin</option>
+    <option value="viewer">Viewer</option>
+  </select><br>
+  <button type="submit">Register</button>
+  {% if message %}<p>{{ message }}</p>{% endif %}
+</form>
