@@ -1,7 +1,18 @@
-<form method="post">
-  <h2>Login</h2>
-  Username: <input name="username"><br>
-  Password: <input name="password" type="password"><br>
+<!-- Inside your login.html -->
+<form method="POST">
+  <label>Username:</label>
+  <input type="text" name="username" required><br>
+
+  <label>Password:</label>
+  <input type="password" name="password" required><br>
+
   <button type="submit">Login</button>
-  {% if message %}<p>{{ message }}</p>{% endif %}
 </form>
+
+<p style="color:red;">{{ message }}</p>
+
+<hr>
+<p>OR</p>
+<a href="{{ url_for('gmail_login') }}">
+    <button type="button">Login with Gmail</button>
+</a>

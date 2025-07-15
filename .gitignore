@@ -1,21 +1,57 @@
-# Ignore Python virtual environments
-venv/
-
-# Ignore Python cache files
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# Ignore sensitive certs and keys
-*.pem
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Flask / Python specific
+instance/
+*.db
+*.sqlite3
+
+# Secrets
+*.env
+.env.*
+client_secret.json
 keyvault.json
 
-# Ignore logs or temp files
+# Logs
 *.log
-*.db
+logs/
+access.log
+error.log
 
-# Ignore environment config (if used)
-.env
-
-# System files
+# OS files
 .DS_Store
 Thumbs.db
+
+# Pytest / coverage / mypy
+.coverage
+.tox/
+.mypy_cache/
+.pytest_cache/
+
+# VS Code and IDE files
+.vscode/
+.idea/
+*.swp
+
+# Backup / Export
+*.bak
+*.old
+*.json.bak
+securedb_backup.json
+
+# SSL certificates
+cert.pem
+key.pem
+*.crt
+*.key
+
+# OAuth cache
+.token.json

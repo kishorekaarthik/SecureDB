@@ -1,16 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .record { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    button { padding: 5px 10px; }
+    .actions form { display: inline; }
+    hr { margin-top: 30px; }
+  </style>
+</head>
+<body>
+
+<h2>{{ session['role'].capitalize() }} Dashboard</h2>
+
 <form method="post">
-  <h2>Enter Your Personal Secrets</h2>
-  Bank Account: <input name="bank_account"><br>
-  UPI: <input name="upi"><br>
-  PAN: <input name="pan"><br>
-  Notes: <textarea name="note"></textarea><br>
-  <button type="submit">Save</button>
+  {% if edit_id %}
+    <input type="hidden" name="edit_id" value="{{ edit_id }}">
+  {% endif %}
+  <label>Bank Account:</label><br>
+  <input name="bank_account" value="{{ form_data.bank_account if form_data else '' }}" required><br><br>
+
+  <label>UPI:</label><br>
+  <input name="upi" value="{{ form_data.upi if form_data else '' }}" required><br><br>
+
+  <label>PAN:</label><br>
+  <input name="pan" value="{{ form_data.pan if form_data else '' }}" required><br><br>
+
+  <label>Note:</label><br>
+  <textarea name="note">{{ form_data.note if form_data else '' }}</textarea><br><br>
+
+  <button type="submit">{{ 'Update' if edit_id else 'Submit' }}</button>
 </form>
 
-{% if result %}
-  <h3>Decrypted:</h3>
-  Bank: {{ result.bank_account }}<br>
-  UPI: {{ result.upi }}<br>
-  PAN: {{ result.pan }}<br>
-  Note: {{ result.note }}<br>
-{% endif %}
+<hr>
+
+<h3>Your Records:</h3>
+{% for r in records %}
+  <div class="record">
+    <strong>Bank:</strong> {{ r.bank_account }}<br>
+    <strong>UPI:</strong> {{ r.upi }}<br>
+    <strong>PAN:</strong> {{ r.pan }}<br>
+    <strong>Note:</strong> {{ r.note }}<br><br>
+    <a href="{{ url_for('dashboard', edit=r._id) }}">✏️ Edit</a> |
+    <a href="{{ url_for('delete_record', record_id=r._id) }}" onclick="return confirm('Delete this?')">🗑️ Delete</a>
+  </div>
+{% else %}
+  <p>No records found.</p>
+{% endfor %}
+
+<hr>
+
+<!-- 🔐 Change Encryption Passphrase -->
+<form action="{{ url_for('change_passphrase') }}" method="post">
+  <button type="submit">🔑 Change Encryption Passphrase</button>
+</form>
+
+<br>
+
+<!-- 📥 Download Backup -->
+<form action="{{ url_for('download_backup') }}" method="get">
+  <button type="submit">📥 Download Encrypted Backup (JSON)</button>
+</form>
+
+<br>
+
+<!-- 🚪 Logout -->
+<form action="{{ url_for('logout') }}" method="get">
+  <button type="submit">🚪 Logout</button>
+</form>
+
+</body>
+</html>

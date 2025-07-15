@@ -1,8 +1,21 @@
 Flask
 pymongo
-pycryptodome
+Flask-JWT-Extended
+Flask-Limiter
 bcrypt
-flask-jwt-extended
-flask-limiter
 marshmallow
 requests
+email-validator
+
+# Google OAuth
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+cachecontrol
+oauthlib
+
+# Splunk SDK (if you're using Splunk log fetching)
+splunk-sdk
+
+# For .env support (optional, if you use dotenv)
+python-dotenv

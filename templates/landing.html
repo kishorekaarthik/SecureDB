@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberVault - Secure Financial Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #000000 0%, #0f1f0f 50%, #1a3a1a 100%);
+            color: #00ff41;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid #00ff41;
+            margin-bottom: 3rem;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00ff41;
+            text-shadow: 0 0 10px #00ff41;
+        }
+
+        .nav {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav a {
+            color: #00ff41;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 1px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav a::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
+            transition: left 0.3s ease;
+        }
+
+        .nav a:hover::before {
+            left: 100%;
+        }
+
+        .nav a:hover {
+            border: 1px solid #00ff41;
+            box-shadow: 0 0 20px #00ff41;
+            background: rgba(0, 255, 65, 0.15);
+            transform: translateY(-2px);
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+            position: relative;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            text-shadow: 0 0 20px #00ff41;
+            animation: glow-pulse 2s ease-in-out infinite alternate;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            color: #b0b0b0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background: linear-gradient(45deg, #00ff41, #00cc33);
+            color: #000;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 255, 65, 0.4);
+        }
+
+        /* Features Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 4rem 0;
+        }
+
+        .feature-card p {
+            color: #b0b0b0;
+            line-height: 1.6;
+        }
+
+        /* Security Stats */
+        .security-stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 4rem 0;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid #00ff41;
+        }
+
+        .stat {
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .stat:hover {
+            transform: scale(1.1);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            color: #00ff41;
+            font-weight: bold;
+            text-shadow: 0 0 15px #00ff41;
+        }
+
+        .stat:hover .stat-number {
+            text-shadow: 0 0 25px #00ff41, 0 0 35px #00ff41;
+        }
+
+        .stat-label {
+            color: #b0b0b0;
+            margin-top: 0.5rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            border-top: 1px solid #00ff41;
+            margin-top: 4rem;
+            color: #b0b0b0;
+        }
+
+        /* FAQ Section */
+        .faq-section {
+            margin: 4rem 0;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid #00ff41;
+        }
+
+        .faq-item {
+            border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+            margin-bottom: 1rem;
+        }
+
+        .faq-question {
+            width: 100%;
+            padding: 1rem;
+            background: transparent;
+            border: none;
+            color: #00ff41;
+            font-size: 1.1rem;
+            font-weight: bold;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .faq-question:hover {
+            background: rgba(0, 255, 65, 0.1);
+            transform: translateX(5px);
+        }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            padding: 0 1rem;
+            color: #b0b0b0;
+        }
+
+        .faq-answer.active {
+            max-height: 200px;
+            padding: 1rem;
+        }
+
+        .faq-arrow {
+            transition: transform 0.3s ease;
+        }
+
+        .faq-arrow.rotated {
+            transform: rotate(180deg);
+        }
+
+        /* Enhanced Hover Effects */
+        .feature-card {
+            background: rgba(0, 255, 65, 0.05);
+            border: 1px solid #00ff41;
+            padding: 2rem;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            box-shadow: 0 20px 50px rgba(0, 255, 65, 0.3);
+            border-color: #66ff66;
+        }
+
+        .feature-card:hover h3 {
+            color: #ffffff;
+            text-shadow: 0 0 15px #00ff41;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff41, transparent);
+            animation: cyber-scan 3s linear infinite;
+        }
+
+        .feature-card h3 {
+            color: #00ff41;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        /* Pulsing Elements */
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 5px #00ff41; }
+            100% { box-shadow: 0 0 20px #00ff41, 0 0 30px #00ff41; }
+        }
+
+        /* Animations */
+        @keyframes glow-pulse {
+            0% { text-shadow: 0 0 20px #00ff41; }
+            100% { text-shadow: 0 0 30px #00ff41, 0 0 40px #00ff41; }
+        }
+
+        @keyframes cyber-scan {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .slide-in-left {
+            animation: slideInLeft 0.8s ease-out;
+        }
+
+        /* Matrix Background Effect */
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0.1;
+        }
+
+        .matrix-bg::before {
+            content: '01001001 01101110 01110100 01100101 01101100 01101100 01101001 01100111 01100101 01101110 01100011 01100101';
+            position: absolute;
+            top: 0;
+            left: 0;
+            font-family: monospace;
+            font-size: 12px;
+            color: #00ff41;
+            white-space: pre-wrap;
+            animation: matrix-rain 20s linear infinite;
+        }
+
+        @keyframes matrix-rain {
+            0% { transform: translateY(-100vh); }
+            100% { transform: translateY(100vh); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .nav {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .security-stats {
+                flex-direction: column;
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="matrix-bg"></div>
+    
+    <div class="container">
+        <header class="header">
+            <div class="logo">🔐 CyberVault</div>
+            <nav class="nav">
+                <a href="#features">Features</a>
+                <a href="#security">Security</a>
+                <a href="#contact">Contact</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <h1>Secure Financial Dashboard</h1>
+            <p>
+                Military-grade encryption meets intuitive design. Protect your financial data with 
+                bank-level security while maintaining complete control over your sensitive information. 
+                Your data, encrypted locally, accessible only by you.
+            </p>
+            <div style="margin-top: 2rem;">
+                <a href="{{ url_for('register') }}" class="cta-button" style="margin-right: 1rem;">Register</a>
+                <a href="{{ url_for('login') }}"class="cta-button">Login</a>
+            </div>
+        </section>
+
+
+        <section class="features" id="features">
+            <div class="feature-card">
+                <h3>🛡️ Military-Grade Encryption</h3>
+                <p>
+                    AES-256 encryption ensures your financial data remains secure. 
+                    Every piece of information is encrypted locally before storage, 
+                    making it impossible for unauthorized access.
+                </p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔒 Zero-Knowledge Architecture</h3>
+                <p>
+                    We never see your data. Your encryption passphrase is known only to you, 
+                    ensuring complete privacy and security of your financial records.
+                </p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>📱 Multi-Device Sync</h3>
+                <p>
+                    Access your encrypted financial dashboard across all devices with 
+                    seamless synchronization while maintaining end-to-end encryption.
+                </p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>💾 Encrypted Backups</h3>
+                <p>
+                    Download encrypted backups of your data anytime. Your information 
+                    remains secure even in backup form with multiple layers of protection.
+                </p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🎯 Secure Data Management</h3>
+                <p>
+                    Manage bank accounts, UPI details, PAN information, and personal notes 
+                    with enterprise-level security in an intuitive interface.
+                </p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>⚡ Real-Time Monitoring</h3>
+                <p>
+                    Advanced monitoring systems detect suspicious activities and 
+                    unauthorized access attempts, keeping your data safe 24/7.
+                </p>
+            </div>
+        </section>
+
+        <section class="security-stats" id="security">
+            <div class="stat">
+                <div class="stat-number">256</div>
+                <div class="stat-label">Bit Encryption</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">99.9%</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">0</div>
+                <div class="stat-label">Data Breaches</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">24/7</div>
+                <div class="stat-label">Security Monitoring</div>
+            </div>
+        </section>
+
+        <section class="faq-section slide-in-left">
+            <h2 style="text-align: center; color: #00ff41; margin-bottom: 2rem; font-size: 2rem;">Frequently Asked Questions</h2>
+            
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    How secure is my financial data?
+                    <span class="faq-arrow">▼</span>
+                </button>
+                <div class="faq-answer">
+                    Your data is protected with AES-256 military-grade encryption. All information is encrypted locally on your device before being stored, ensuring that even we cannot access your sensitive financial details.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    Can I access my data if I forget my passphrase?
+                    <span class="faq-arrow">▼</span>
+                </button>
+                <div class="faq-answer">
+                    Due to our zero-knowledge architecture, we cannot recover your passphrase. However, you can download encrypted backups and use alternative recovery methods you set up during account creation.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    How do encrypted backups work?
+                    <span class="faq-arrow">▼</span>
+                </button>
+                <div class="faq-answer">
+                    Encrypted backups contain all your data in an encrypted format. You can download these files anytime and restore them later. The backups remain encrypted and can only be decrypted with your passphrase.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    Is multi-device sync secure?
+                    <span class="faq-arrow">▼</span>
+                </button>
+                <div class="faq-answer">
+                    Yes, our multi-device sync maintains end-to-end encryption. Data is encrypted on your device before syncing and can only be decrypted on devices with your passphrase.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    What happens during a security breach?
+                    <span class="faq-arrow">▼</span>
+                </button>
+                <div class="faq-answer">
+                    Even in the unlikely event of a breach, your data remains secure due to local encryption. Attackers would only access encrypted data that's useless without your personal passphrase.
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer" id="contact">
+            <p>&copy; 2024 CyberVault Dashboard. Securing your financial future with cutting-edge encryption.</p>
+        </footer>
+    </div>
+
+    <script>
+        function toggleFAQ(button) {
+            const answer = button.nextElementSibling;
+            const arrow = button.querySelector('.faq-arrow');
+            
+            // Close all other FAQs
+            document.querySelectorAll('.faq-answer').forEach(item => {
+                if (item !== answer) {
+                    item.classList.remove('active');
+                }
+            });
+            
+            document.querySelectorAll('.faq-arrow').forEach(item => {
+                if (item !== arrow) {
+                    item.classList.remove('rotated');
+                }
+            });
+            
+            // Toggle current FAQ
+            answer.classList.toggle('active');
+            arrow.classList.toggle('rotated');
+        }
+
+        // Add intersection observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.animationDelay = '0.2s';
+                    entry.target.classList.add('slide-in-left');
+                }
+            });
+        }, observerOptions);
+
+        // Observe feature cards for staggered animation
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.feature-card').forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.1}s`;
+                observer.observe(card);
+            });
+        });
+    </script>
+</body>
+</html>

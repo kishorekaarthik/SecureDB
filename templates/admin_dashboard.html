@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Dashboard</title>
+  <style>
+    body { font-family: Arial; margin: 30px; background: #fafafa; }
+    h2, h3 { color: #2c3e50; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+    th { background: #e0e0e0; }
+    .disabled { color: red; }
+  </style>
+</head>
+<body>
+
+<h2>🔐 SecureDB Admin Dashboard</h2>
+
+<h3>📊 System Stats</h3>
+<ul>
+  <li>Total Users: {{ total_users }}</li>
+  <li>Total Viewers: {{ total_viewers }}</li>
+  <li>Total Admins: {{ total_admins }}</li>
+  <li>Total Records: {{ total_records }}</li>
+  <li>Key Versions: {{ total_keys }}</li>
+</ul>
+
+<h3>👥 Manage Users</h3>
+<table>
+  <tr><th>Username</th><th>Role</th><th>Status</th><th>Change Role</th><th>Action</th></tr>
+  {% for user in user_list %}
+  <tr class="{{ 'disabled' if not user.active }}">
+    <td>{{ user.username }}</td>
+    <td>{{ user.role }}</td>
+    <td>{{ 'Active' if user.active else 'Disabled' }}</td>
+    <td>
+      <form method="post" action="{{ url_for('change_role', uid=user._id) }}">
+        <select name="new_role">
+          <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>viewer</option>
+          <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>admin</option>
+        </select>
+        <button type="submit">Update</button>
+      </form>
+    </td>
+    <td>
+      <form method="post" action="{{ url_for('toggle_user', uid=user._id) }}">
+        <button type="submit">{{ 'Disable' if user.active else 'Enable' }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>🧾 Recent Audit Logs</h3>
+<pre style="background:#f0f0f0; padding:10px; max-height:300px; overflow:auto;">
+{% for line in logs %}
+{{ line.strip() }}
+{% endfor %}
+</pre>
+
+<h3>📦 Encrypted Records (User Submitted)</h3>
+<table>
+  <tr><th>Username</th><th>Encrypted Data</th><th>Timestamp</th></tr>
+  {% for record in encrypted_records %}
+  <tr>
+    <td>{{ record.username }}</td>
+    <td><pre>{{ record.data | tojson(indent=2) }}</pre></td>
+    <td>{{ record.created }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<!-- 🚪 Admin Logout -->
+<form action="{{ url_for('logout') }}" method="get">
+  <button type="submit">🚪 Logout</button>
+</form>
+
+
+</body>
+</html>
