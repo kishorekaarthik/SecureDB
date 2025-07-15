@@ -50,6 +50,7 @@ securedb_backup.json
 # SSL certificates
 cert.pem
 key.pem
+splunk_cert.pem
 *.crt
 *.key
 
