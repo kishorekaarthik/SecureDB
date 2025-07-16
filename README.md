@@ -32,9 +32,8 @@ CyberVault is a secure, Flask-based web application designed to store, encrypt, 
 - **View Audit Logs**
 - **Admin Panel Access Restricted to Whitelisted IPs**
 
----
 
-## 🔐 Security Highlights
+## Security Highlights
 
 - **AES Encryption** (CBC mode) for personal data
 - **Key Versioning** with Rotation Support
