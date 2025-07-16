@@ -1,95 +1,170 @@
-### CyberVault
-CyberVault is a secure web application designed for managing sensitive personal information. It prioritizes security through a multi-layered defense architecture, including mandatory multi-factor authentication and application-level encryption.
+# 🔐 CyberVault — A Secure Personal Data Vault
 
-## ✨ Key Features
-Dual Authentication: Sign in using a traditional email/password or with your Google (OAuth 2.0) account.
+CyberVault is a secure, Flask-based web application designed to store, encrypt, and manage users' sensitive data with advanced authentication, encryption, and admin monitoring capabilities. Built with modern security practices, it provides secure data storage, OTP-based authentication, and an audit-ready logging system using Splunk.
 
-Mandatory Multi-Factor Authentication (MFA): All login attempts, regardless of the method, require a second-factor One-Time Password (OTP) sent to your registered email.
+---
 
-Application-Level Encryption: Your sensitive data (bank accounts, PAN, notes) is encrypted on the server before it's stored in the database. The platform is designed so that even administrators cannot view plaintext user secrets.
+## 🚀 Features
 
-Encryption Key Rotation: Users can rotate their personal encryption keys at any time, re-encrypting all their data with a new key for enhanced security.
+### 🧑‍💼 User Functionality
+- 🔐 **Register with OTP Verification** (Email or Google)
+- 🔑 **Login with Password or Google OAuth2**
+- 🧾 **2-Factor Authentication** via Email OTP
+- 🔒 **Encrypt + Store Sensitive Information**
+- 👁️ **Decrypt Own Records Using AES**
+- ♻️ **Update / Delete Own Records**
+- 🗝️ **Change Encryption Passphrase**
+- 📥 **Download Encrypted JSON Backup**
+- 🆘 **Forgot Password Flow with OTP Verification**
 
-Secure Password Policies: Enforces password strength requirements and prevents the reuse of recent passwords.
+---
 
-Admin Dashboard: A special IP-whitelisted dashboard for administrators to view system statistics, manage users, and review audit logs.
+### 🛡️ Admin Features (Hardcoded: `admin / admin123`)
+- 📊 **Admin Dashboard** with:
+  - Total Users
+  - Encrypted Records Count
+  - Active Key Versions
+- 🧑‍💼 **User Management**
+  - Enable / Disable Accounts
+  - Assign Roles
+- 🧠 **Suspicious Activity Detection**
+  - Failed Login Logs
+  - IP Mismatch Tracking
+- 🔑 **Key Rotation Support** (Future data uses new key)
+- 📜 **View Audit Logs**
+- 🔒 **Admin Panel Access Restricted to Whitelisted IPs**
 
-Rate Limiting & Lockouts: Protects against brute-force attacks by limiting login attempts.
+---
 
-Data Backup: Users can securely download an unencrypted backup of their data.
+## 🔐 Security Highlights
 
-## 💻 Technology Stack
-Backend: Python, Flask
+- 🔑 **AES Encryption** (CBC mode) for personal data
+- 🔁 **Key Versioning** with Rotation Support
+- 🧠 **Strong Password Policy**
+  - Min. 8 characters, Alphanumeric
+  - Prevents reuse of last 3 passwords
+- ⚙️ **Rate Limiting + IP Logging**
+- ✉️ **OTP Verification via Email**
+- 📡 **Splunk Integration** for logging:
+  - Failed Logins
+  - Password Changes
+  - Decrypt Events
+- 🕵️‍♂️ **Secure Admin UI** with Role-based Access Control (RBAC)
 
-Database: MongoDB
+---
 
-Authentication: Flask-JWT-Extended, Google OAuth 2.0
+## ⚙️ Technologies Used
 
-Security: Flask-Limiter, custom encryption modules for data protection.
+| Tool          | Purpose                          |
+|---------------|----------------------------------|
+| Python (Flask)| Web Framework (Backend)          |
+| MongoDB       | Database for storing user data   |
+| HTML/CSS/JS   | Frontend interface               |
+| Flask-Mail    | OTP Email Notifications          |
+| Google OAuth2 | Gmail Login / Registration       |
+| Splunk        | Logging + Security Monitoring    |
+| AES (Crypto)  | Data Encryption/Decryption       |
+| Marshmallow   | Input Validation                 |
+| JWT           | Secure Session Authentication    |
+| dotenv        | Config Management                |
 
-## 🚀 Setup and Installation
-Follow these steps to get CyberVault running locally.
+---
 
-### Prerequisites
-Python 3.8+
+## 🧪 Setup Instructions
 
-MongoDB
-
-pip and virtualenv
-
-### Installation Steps
-Clone the repository:
-
-Bash
-
+1. **Clone the Repository**
+```bash
 git clone https://github.com/your-username/cybervault.git
 cd cybervault
-Create and activate a virtual environment:
+````
 
-Bash
+2. **Create a Virtual Environment**
 
+```bash
 python -m venv venv
-source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-Install the required dependencies:
+source venv/bin/activate   # On Windows: venv\Scripts\activate
+```
 
-Bash
+3. **Install Dependencies**
 
+```bash
 pip install -r requirements.txt
-Configure Environment Variables:
-Create a .env file in the root directory and add the following variables. Do not use the default hardcoded keys in app.py for production.
+```
 
-Code snippet
+4. **Setup Environment Variables**
+   Create a `.env` file with the following:
 
-FLASK_SECRET_KEY='a-very-strong-and-random-secret-key'
-JWT_SECRET_KEY='another-very-strong-and-random-jwt-key'
-GOOGLE_CLIENT_ID='your-google-client-id.apps.googleusercontent.com'
-GOOGLE_CLIENT_SECRET='your-google-client-secret'
-MONGO_URI='mongodb://localhost:27017/'
-Generate a self-signed SSL certificate for local HTTPS (required for OAuth):
+```env
+FLASK_SECRET_KEY=your-secret-key
+JWT_SECRET_KEY=your-jwt-secret
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@example.com
+EMAIL_PASS=your-email-password
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+SPLUNK_TOKEN=your-splunk-token
+SPLUNK_HOST=http://localhost:8088
+```
 
-Bash
+5. **Run the App**
 
-openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
-Run the application:
-
-Bash
-
+```bash
 python app.py
-The application will be available at https://127.0.0.1:5000.
+```
 
-## ⚠️ Security Warning
-This codebase is provided as a portfolio project and contains certain configurations intended for development purposes only. Before deploying in a production environment, you MUST:
+---
 
-Remove the Hardcoded Admin Password: In app.py, the following code block creates a major vulnerability and must be removed. You should create your admin user through a secure, separate script.
+## 🧪 Sample Test Users
 
-Python
+| Username | Password   | Role   |
+| -------- | ---------- | ------ |
+| kishore  | Test\@1234 | Viewer |
+| admin    | admin123   | Admin  |
 
-# REMOVE THIS BLOCK FROM app.py IN PRODUCTION
-if username == "admin" and password == "admin123":
-    ...
-Disable Debug Mode: In app.py, change app.run(debug=True, ...) to app.run(debug=False, ...).
+---
 
-Use Environment Variables: Do not hardcode secret keys, Google credentials, or database URIs directly in the code. Load them from environment variables as shown in the setup steps.
+## 📁 Folder Structure
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+```
+CyberVault/
+│
+├── app.py                  # Main Flask app
+├── encryptor.py            # AES Encryption Logic
+├── mailer.py               # OTP Email Service
+├── logger.py               # Splunk Logger Integration
+├── templates/              # HTML Templates
+│   ├── login.html
+│   ├── register.html
+│   ├── verify_otp.html
+│   ├── forgot_password.html
+│   └── dashboard.html
+├── static/                 # CSS, JS, Particles
+├── .env                    # Environment Variables (Not tracked)
+├── requirements.txt
+└── README.md               # This file
+```
+
+---
+
+## 📦 Future Enhancements
+
+* 📄 PDF Export of Encrypted Records
+* 🧠 AI-assisted Threat Detection
+* 🌐 WebSocket-based Real-Time Alerts
+* ☁️ Cloud Backup Support
+
+---
+
+## 👨‍💻 Maintainer
+
+**Kishore**
+Cybersecurity Enthusiast & Developer
+📧 `skishorekaarthik@gmail.com`
+
+---
+
+## 📜 License
+
+MIT License — Free to use, modify, and share.
+Attribution appreciated 🙌
