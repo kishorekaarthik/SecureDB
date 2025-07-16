@@ -10,7 +10,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 🔸 Splunk HEC Config (for Logging Events)
 # --------------------
 HEC_URL = "http://localhost:8088/services/collector"
-HEC_TOKEN = "a5f1e706-6748-43ac-8443-64c6c1df2812"
+HEC_TOKEN = "YOUR_SPLUNK_HEC_TOKEN"
 HEC_SOURCETYPE = "securedb"
 
 def log_event(action, user="admin"):
