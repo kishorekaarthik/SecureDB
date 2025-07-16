@@ -3,20 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberVault - Secure Financial Dashboard</title>
+    <title>CyberVault - Effortless Encryption for Developers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #0f0f1a;
+            --bg-tertiary: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #c0d6e4; /* Lighter secondary text for new theme */
+            --text-muted: #4a5568;
+            --accent-primary: #a0d2eb; /* Light Blue */
+            --accent-secondary: #60a5fa; /* Blue */
+            --accent-tertiary: #3b82f6;
+            --border-subtle: rgba(192, 214, 228, 0.1);
+            --border-accent: rgba(160, 210, 235, 0.3);
+            --glow-primary: rgba(160, 210, 235, 0.4);
+            --glow-secondary: rgba(96, 165, 250, 0.3);
+            --card-bg: rgba(15, 20, 30, 0.8);
+            --code-bg: rgba(10, 10, 15, 0.9);
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
-            font-family: 'Courier New', monospace;
-            background: linear-gradient(135deg, #000000 0%, #0f1f0f 50%, #1a3a1a 100%);
-            color: #00ff41;
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: 
+                radial-gradient(ellipse 800px 700px at 50% -10%, rgba(160, 210, 235, 0.15) 0%, transparent 50%), /* Light Blue glow at top */
+                radial-gradient(ellipse 800px 600px at 100% 100%, rgba(96, 165, 250, 0.1) 0%, transparent 50%), /* Blue glow at bottom right */
+                linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%); /* Black/dark base */
+            color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
+            position: relative;
+            font-weight: 300;
+            letter-spacing: -0.01em;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 20%, rgba(160, 210, 235, 0.08) 0px, transparent 50px), /* light blue */
+                radial-gradient(circle at 80% 80%, rgba(96, 165, 250, 0.07) 0px, transparent 50px), /* blue */
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05) 0px, transparent 50px); /* white */
+            opacity: 0.6;
+            pointer-events: none;
+            z-index: -1;
         }
 
         .container {
@@ -30,179 +78,408 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1rem 0;
-            border-bottom: 1px solid #00ff41;
-            margin-bottom: 3rem;
-            animation: fadeInDown 1s ease-out;
+            padding: 1.5rem 0;
+            margin-bottom: 4rem;
+            backdrop-filter: blur(20px);
+            opacity: 0;
+            animation: fadeInDown 1s ease-out 0.2s forwards;
         }
 
         .logo {
             font-size: 1.5rem;
-            font-weight: bold;
-            color: #00ff41;
-            text-shadow: 0 0 10px #00ff41;
+            font-weight: 600;
+            color: var(--text-primary);
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .nav {
             display: flex;
+            align-items: center;
             gap: 2rem;
         }
 
         .nav a {
-            color: #00ff41;
+            color: var(--text-secondary);
             text-decoration: none;
-            padding: 0.5rem 1rem;
-            border: 1px solid transparent;
-            transition: all 0.3s ease;
+            padding: 0.6rem 1.2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
-            overflow: hidden;
+            font-weight: 400;
+            border-radius: 8px;
         }
-
-        .nav a::before {
+        
+        .nav a:not(.button)::after {
             content: '';
             position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
-            transition: left 0.3s ease;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(-50%);
         }
-
-        .nav a:hover::before {
-            left: 100%;
+        
+        .nav a:not(.button):hover::after {
+            width: 100%;
         }
 
         .nav a:hover {
-            border: 1px solid #00ff41;
-            box-shadow: 0 0 20px #00ff41;
-            background: rgba(0, 255, 65, 0.15);
+            color: var(--text-primary);
+            background: rgba(160, 210, 235, 0.1);
+        }
+
+        .nav .button {
+            font-weight: 500;
+            border-radius: 8px;
+        }
+        
+        .nav .login-btn {
+            background: transparent;
+            border: 1px solid var(--border-accent);
+            backdrop-filter: blur(10px);
+        }
+        
+        .nav .login-btn:hover {
+            background: var(--card-bg);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+        
+        .nav .start-btn {
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            color: var(--bg-primary);
+            border: 1px solid transparent;
+        }
+        
+        .nav .start-btn:hover {
             transform: translateY(-2px);
+            box-shadow: 0 8px 25px var(--glow-primary);
         }
 
         /* Hero Section */
         .hero {
-            text-align: center;
-            padding: 4rem 0;
-            position: relative;
+            padding: 6rem 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+            opacity: 0;
+            animation: fadeInUp 1s ease-out 0.4s forwards;
         }
 
-        .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            color: #ffffff;
-            text-shadow: 0 0 20px #00ff41;
-            animation: glow-pulse 2s ease-in-out infinite alternate;
-        }
-
-        .hero p {
-            font-size: 1.2rem;
+        .hero-text .platform-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-accent);
+            border-radius: 20px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
             margin-bottom: 2rem;
-            color: #b0b0b0;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            font-weight: 400;
+        }
+
+        .hero-text h1 {
+            font-size: 3.5rem;
+            margin-bottom: 2rem;
+            color: var(--text-primary);
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-text p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 480px;
+            line-height: 1.7;
+            font-weight: 400;
+        }
+        
+        /* Hero Visuals */
+        .hero-visuals {
+            position: relative;
+            height: 500px;
+        }
+
+        .visual-item {
+            position: absolute;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            box-shadow: 
+                0 20px 40px rgba(0,0,0,0.4),
+                0 0 0 1px rgba(255,255,255,0.05),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(20px);
+            opacity: 0;
+            transform: translateY(20px) scale(0.98);
+        }
+        
+        .visual-item.is-visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        
+        .visual-item:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 
+                0 30px 60px rgba(0,0,0,0.5),
+                0 0 40px var(--glow-primary),
+                0 0 0 1px var(--border-accent);
+        }
+
+        .mock-ui {
+            width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #1a1a2e;
+            padding: 1.5rem;
+            border-radius: 16px;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+        
+        .mock-ui-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .mock-ui-header img { 
+            width: 40px; 
+            height: 40px; 
+            border-radius: 8px;
+        }
+        
+        .mock-ui-body { 
+            font-size: 0.85rem; 
+            color: #4a5568; 
+        }
+        
+        .mock-ui-body .field { 
+            margin-bottom: 0.75rem; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .mock-ui-body .field span { 
+            color: #718096;
+            font-weight: 500;
+        }
+        
+        .mock-ui-body hr { 
+            border: 0; 
+            border-top: 1px solid #e2e8f0; 
+            margin: 1.5rem 0;
+        }
+        
+        .mock-ui-button {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            color: var(--bg-primary);
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            margin-top: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .code-snippet {
+            width: 320px;
+            overflow: hidden;
+            border-radius: 12px;
+            background: var(--code-bg);
+        }
+        
+        .code-header {
+            background: rgba(26, 26, 46, 0.9);
+            padding: 0.75rem 1rem;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .code-header::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff5f56, #ffbd2e);
+        }
+        
+        .code-body {
+            padding: 1.5rem;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 0.85rem;
             line-height: 1.6;
         }
+        
+        .code-body .c-p { color: #c084fc; } /* purple */
+        .code-body .c-g { color: #4ade80; } /* green */
+        .code-body .c-y { color: #fde047; } /* yellow */
+        .code-body .c-o { color: #f472b6; } /* pink/rose */
+        .code-body .c-b { color: #38bdf8; } /* sky blue */
 
-        .cta-button {
-            display: inline-block;
-            padding: 1rem 2rem;
-            background: linear-gradient(45deg, #00ff41, #00cc33);
-            color: #000;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-            animation: float 3s ease-in-out infinite;
+        .code-1 { top: 150px; left: -20px; z-index: 5; }
+        .code-2 { top: 330px; right: 20px; z-index: 15; width: 280px; }
+        
+        .icon-bubble {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-bg);
+            border: 1px solid var(--border-accent);
+        }
+        
+        .icon-1 { top: 140px; right: 0; }
+        .icon-2 { bottom: 30px; left: 50px; }
+        .icon-3 { bottom: 0px; right: 100px; z-index: 20; }
+
+        /* Scroll Animation Classes */
+        .fade-in-up {
+            opacity: 0;
+            transform: translateY(50px);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .cta-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(0, 255, 65, 0.4);
+        .fade-in-up.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .stagger-item {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .stagger-item.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         /* Features Grid */
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 2rem;
-            margin: 4rem 0;
+            margin: 6rem 0;
         }
 
+        .feature-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-subtle);
+            padding: 2.5rem;
+            border-radius: 16px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--border-accent);
+            box-shadow: 
+                0 20px 40px rgba(0,0,0,0.3),
+                0 0 40px var(--glow-primary);
+        }
+
+        .feature-card h3 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
         .feature-card p {
-            color: #b0b0b0;
-            line-height: 1.6;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            font-weight: 400;
         }
 
-        /* Security Stats */
-        .security-stats {
-            display: flex;
-            justify-content: space-around;
-            margin: 4rem 0;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 2rem;
-            border-radius: 8px;
-            border: 1px solid #00ff41;
-        }
-
-        .stat {
+        /* Section Title */
+        .section-title {
             text-align: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-
-        .stat:hover {
-            transform: scale(1.1);
-        }
-
-        .stat-number {
+            color: var(--text-primary);
+            margin-bottom: 4rem;
             font-size: 2.5rem;
-            color: #00ff41;
-            font-weight: bold;
-            text-shadow: 0 0 15px #00ff41;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-
-        .stat:hover .stat-number {
-            text-shadow: 0 0 25px #00ff41, 0 0 35px #00ff41;
-        }
-
-        .stat-label {
-            color: #b0b0b0;
-            margin-top: 0.5rem;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 2rem 0;
-            border-top: 1px solid #00ff41;
-            margin-top: 4rem;
-            color: #b0b0b0;
-        }
-
+        
         /* FAQ Section */
         .faq-section {
-            margin: 4rem 0;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 2rem;
-            border-radius: 8px;
-            border: 1px solid #00ff41;
+            max-width: 800px;
+            margin: 8rem auto;
+            background: var(--card-bg);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 3rem;
+            backdrop-filter: blur(20px);
         }
 
         .faq-item {
-            border-bottom: 1px solid rgba(0, 255, 65, 0.2);
+            border-bottom: 1px solid var(--border-subtle);
             margin-bottom: 1rem;
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
         }
 
         .faq-question {
             width: 100%;
-            padding: 1rem;
+            padding: 1.5rem 0;
             background: transparent;
             border: none;
-            color: #00ff41;
+            color: var(--text-primary);
             font-size: 1.1rem;
-            font-weight: bold;
+            font-weight: 500;
             text-align: left;
             cursor: pointer;
             display: flex;
@@ -210,99 +487,88 @@
             align-items: center;
             transition: all 0.3s ease;
         }
-
+        
         .faq-question:hover {
-            background: rgba(0, 255, 65, 0.1);
-            transform: translateX(5px);
+            color: var(--accent-primary);
         }
 
         .faq-answer {
             max-height: 0;
             overflow: hidden;
-            transition: max-height 0.3s ease;
-            padding: 0 1rem;
-            color: #b0b0b0;
+            transition: max-height 0.4s ease, padding 0.4s ease;
+            padding: 0;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            font-weight: 400;
         }
 
         .faq-answer.active {
             max-height: 200px;
-            padding: 1rem;
+            padding-bottom: 1.5rem;
         }
 
         .faq-arrow {
             transition: transform 0.3s ease;
+            font-size: 1.2rem;
+            color: var(--accent-primary);
         }
 
         .faq-arrow.rotated {
             transform: rotate(180deg);
         }
 
-        /* Enhanced Hover Effects */
-        .feature-card {
-            background: rgba(0, 255, 65, 0.05);
-            border: 1px solid #00ff41;
-            padding: 2rem;
-            border-radius: 8px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            cursor: pointer;
+        /* Contact Section */
+        .contact-section {
+            text-align: center;
+            background: var(--card-bg);
+            padding: 4rem 2rem;
+            border-radius: 16px;
+            margin: 6rem 0;
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(20px);
         }
 
-        .feature-card:hover {
-            transform: translateY(-10px) scale(1.02);
-            box-shadow: 0 20px 50px rgba(0, 255, 65, 0.3);
-            border-color: #66ff66;
-        }
-
-        .feature-card:hover h3 {
-            color: #ffffff;
-            text-shadow: 0 0 15px #00ff41;
-        }
-
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #00ff41, transparent);
-            animation: cyber-scan 3s linear infinite;
-        }
-
-        .feature-card h3 {
-            color: #00ff41;
+        .contact-section h2 {
+            font-size: 2rem;
             margin-bottom: 1rem;
-            font-size: 1.3rem;
+            font-weight: 600;
         }
 
-        /* Pulsing Elements */
-        .pulse-glow {
-            animation: pulse-glow 2s ease-in-out infinite alternate;
+        .contact-section p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.7;
         }
 
-        @keyframes pulse-glow {
-            0% { box-shadow: 0 0 5px #00ff41; }
-            100% { box-shadow: 0 0 20px #00ff41, 0 0 30px #00ff41; }
+        .contact-button {
+            display: inline-block;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-weight: 500;
+            background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
+            color: var(--bg-primary);
+            text-decoration: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .contact-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px var(--glow-primary);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 0 2rem 0;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: 6rem;
+            color: var(--text-muted);
         }
 
         /* Animations */
-        @keyframes glow-pulse {
-            0% { text-shadow: 0 0 20px #00ff41; }
-            100% { text-shadow: 0 0 30px #00ff41, 0 0 40px #00ff41; }
-        }
-
-        @keyframes cyber-scan {
-            0% { left: -100%; }
-            100% { left: 100%; }
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-        }
-
         @keyframes fadeInDown {
             from {
                 opacity: 0;
@@ -314,221 +580,248 @@
             }
         }
 
-        @keyframes slideInLeft {
+        @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateX(-50px);
+                transform: translateY(30px);
             }
             to {
                 opacity: 1;
-                transform: translateX(0);
+                transform: translateY(0);
             }
-        }
-
-        .slide-in-left {
-            animation: slideInLeft 0.8s ease-out;
-        }
-
-        /* Matrix Background Effect */
-        .matrix-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: -1;
-            opacity: 0.1;
-        }
-
-        .matrix-bg::before {
-            content: '01001001 01101110 01110100 01100101 01101100 01101100 01101001 01100111 01100101 01101110 01100011 01100101';
-            position: absolute;
-            top: 0;
-            left: 0;
-            font-family: monospace;
-            font-size: 12px;
-            color: #00ff41;
-            white-space: pre-wrap;
-            animation: matrix-rain 20s linear infinite;
-        }
-
-        @keyframes matrix-rain {
-            0% { transform: translateY(-100vh); }
-            100% { transform: translateY(100vh); }
         }
 
         /* Responsive */
+        @media (max-width: 992px) {
+            .hero {
+                grid-template-columns: 1fr;
+                text-align: center;
+                gap: 3rem;
+            }
+            .hero-text p {
+                margin-left: auto;
+                margin-right: auto;
+            }
+            .hero-visuals {
+                margin-top: 2rem;
+                height: 450px;
+            }
+        }
+        
         @media (max-width: 768px) {
-            .hero h1 {
+            .header {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            .nav {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .hero-text h1 {
                 font-size: 2.5rem;
             }
-            
-            .nav {
-                flex-direction: column;
-                gap: 1rem;
+            .container {
+                padding: 1rem;
             }
-            
-            .security-stats {
-                flex-direction: column;
-                gap: 2rem;
+        }
+        
+        @media (max-width: 576px) {
+            .hero-visuals {
+                transform: scale(0.8);
+                margin-top: 0;
+                height: 400px;
+            }
+            .faq-section {
+                padding: 2rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="matrix-bg"></div>
-    
     <div class="container">
         <header class="header">
-            <div class="logo">🔐 CyberVault</div>
+            <div class="logo">CyberVault</div>
             <nav class="nav">
                 <a href="#features">Features</a>
-                <a href="#security">Security</a>
+                <a href="#faq">FAQ</a>
                 <a href="#contact">Contact</a>
+                <a href="{{ url_for('login') }}" class="button login-btn">Log In</a>
+                <a href="{{ url_for('register') }}" class="button start-btn">Get Started</a>
             </nav>
         </header>
 
         <section class="hero">
-            <h1>Secure Financial Dashboard</h1>
-            <p>
-                Military-grade encryption meets intuitive design. Protect your financial data with 
-                bank-level security while maintaining complete control over your sensitive information. 
-                Your data, encrypted locally, accessible only by you.
-            </p>
-            <div style="margin-top: 2rem;">
-                <a href="{{ url_for('register') }}" class="cta-button" style="margin-right: 1rem;">Register</a>
-                <a href="{{ url_for('login') }}"class="cta-button">Login</a>
-            </div>
-        </section>
-
-
-        <section class="features" id="features">
-            <div class="feature-card">
-                <h3>🛡️ Military-Grade Encryption</h3>
+            <div class="hero-text">
+                <div class="platform-badge">The first encryption platform</div>
+                <h1>Customer data that's always secure and compliant</h1>
                 <p>
-                    AES-256 encryption ensures your financial data remains secure. 
-                    Every piece of information is encrypted locally before storage, 
-                    making it impossible for unauthorized access.
+                    Automatically secure any inbound data — like credit cards or PII — with best-in-class encryption. With the CyberVault platform you can run secure serverless functions and safely share data with third party APIs.
                 </p>
             </div>
-            
-            <div class="feature-card">
-                <h3>🔒 Zero-Knowledge Architecture</h3>
-                <p>
-                    We never see your data. Your encryption passphrase is known only to you, 
-                    ensuring complete privacy and security of your financial records.
-                </p>
-            </div>
-            
-            <div class="feature-card">
-                <h3>📱 Multi-Device Sync</h3>
-                <p>
-                    Access your encrypted financial dashboard across all devices with 
-                    seamless synchronization while maintaining end-to-end encryption.
-                </p>
-            </div>
-            
-            <div class="feature-card">
-                <h3>💾 Encrypted Backups</h3>
-                <p>
-                    Download encrypted backups of your data anytime. Your information 
-                    remains secure even in backup form with multiple layers of protection.
-                </p>
-            </div>
-            
-            <div class="feature-card">
-                <h3>🎯 Secure Data Management</h3>
-                <p>
-                    Manage bank accounts, UPI details, PAN information, and personal notes 
-                    with enterprise-level security in an intuitive interface.
-                </p>
-            </div>
-            
-            <div class="feature-card">
-                <h3>⚡ Real-Time Monitoring</h3>
-                <p>
-                    Advanced monitoring systems detect suspicious activities and 
-                    unauthorized access attempts, keeping your data safe 24/7.
-                </p>
-            </div>
-        </section>
-
-        <section class="security-stats" id="security">
-            <div class="stat">
-                <div class="stat-number">256</div>
-                <div class="stat-label">Bit Encryption</div>
-            </div>
-            <div class="stat">
-                <div class="stat-number">99.9%</div>
-                <div class="stat-label">Uptime</div>
-            </div>
-            <div class="stat">
-                <div class="stat-number">0</div>
-                <div class="stat-label">Data Breaches</div>
-            </div>
-            <div class="stat">
-                <div class="stat-number">24/7</div>
-                <div class="stat-label">Security Monitoring</div>
-            </div>
-        </section>
-
-        <section class="faq-section slide-in-left">
-            <h2 style="text-align: center; color: #00ff41; margin-bottom: 2rem; font-size: 2rem;">Frequently Asked Questions</h2>
-            
-            <div class="faq-item">
-                <button class="faq-question" onclick="toggleFAQ(this)">
-                    How secure is my financial data?
-                    <span class="faq-arrow">▼</span>
-                </button>
-                <div class="faq-answer">
-                    Your data is protected with AES-256 military-grade encryption. All information is encrypted locally on your device before being stored, ensuring that even we cannot access your sensitive financial details.
+            <div class="hero-visuals">
+                <!-- Mock UI -->
+                <div class="visual-item mock-ui">
+                    <div class="mock-ui-header">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                        <div>
+                            <strong>Data Encryption Service</strong>
+                            <div style="font-size: 0.8rem; color: #718096;">Powered by CyberVault</div>
+                        </div>
+                    </div>
+                    <div class="mock-ui-body">
+                        <div class="field"><span>Status</span> <strong>Active</strong></div>
+                        <div class="field"><span>Data Store</span> <strong>MongoDB</strong></div>
+                        <hr>
+                        <div class="field">
+                            <span>Encryption</span>
+                            <strong style="color: #10b981;">AES-256</strong>
+                        </div>
+                        <div class="field">
+                            <span>Admin Access</span>
+                            <span style="color: #ef4444;">Denied</span>
+                        </div>
+                        <button class="mock-ui-button">Rotate Keys</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="faq-item">
-                <button class="faq-question" onclick="toggleFAQ(this)">
-                    Can I access my data if I forget my passphrase?
-                    <span class="faq-arrow">▼</span>
-                </button>
-                <div class="faq-answer">
-                    Due to our zero-knowledge architecture, we cannot recover your passphrase. However, you can download encrypted backups and use alternative recovery methods you set up during account creation.
+                <!-- Code Snippet 1 -->
+                <div class="visual-item code-snippet code-1">
+                    <div class="code-header">splunk-logger.js</div>
+                    <pre><code class="code-body"><span class="c-p">import</span> { <span class="c-g">SplunkLogger</span> } <span class="c-p">from</span> <span class="c-o">'./splunk'</span>;
+
+<span class="c-y">logEvent</span>({
+  <span class="c-g">event</span>: <span class="c-o">'LOGIN_FAILURE'</span>,
+  <span class="c-g">user</span>: <span class="c-o">'user@email.com'</span>,
+  <span class="c-g">ip</span>: <span class="c-o">'192.168.1.1'</span>,
+  <span class="c-g">reason</span>: <span class="c-o">'INVALID_OTP'</span>,
+  <span class="c-g">timestamp</span>: <span class="c-p">new</span> <span class="c-y">Date</span>()
+});</code></pre>
                 </div>
-            </div>
 
-            <div class="faq-item">
-                <button class="faq-question" onclick="toggleFAQ(this)">
-                    How do encrypted backups work?
-                    <span class="faq-arrow">▼</span>
-                </button>
-                <div class="faq-answer">
-                    Encrypted backups contain all your data in an encrypted format. You can download these files anytime and restore them later. The backups remain encrypted and can only be decrypted with your passphrase.
+                <!-- Code Snippet 2 -->
+                <div class="visual-item code-snippet code-2">
+                    <div class="code-header">check-auth.js</div>
+                    <pre><code class="code-body"><span class="c-p">function</span> <span class="c-y">checkRole</span>(<span class="c-g">user</span>) {
+  <span class="c-p">if</span> (<span class="c-g">user</span>.<span class="c-y">role</span> !== <span class="c-o">'admin'</span>) {
+    <span class="c-p">throw new</span> <span class="c-y">Error</span>(
+      <span class="c-o">'Access Denied'</span>
+    );
+  }
+  <span class="c-p">return</span> <span class="c-b">true</span>;
+}</code></pre>
                 </div>
-            </div>
 
-            <div class="faq-item">
-                <button class="faq-question" onclick="toggleFAQ(this)">
-                    Is multi-device sync secure?
-                    <span class="faq-arrow">▼</span>
-                </button>
-                <div class="faq-answer">
-                    Yes, our multi-device sync maintains end-to-end encryption. Data is encrypted on your device before syncing and can only be decrypted on devices with your passphrase.
+                <!-- Security Icons -->
+                <div class="visual-item icon-bubble icon-1">
+                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" stroke="#6366f1" fill="none" stroke-width="2"/>
+                    </svg>
                 </div>
-            </div>
-
-            <div class="faq-item">
-                <button class="faq-question" onclick="toggleFAQ(this)">
-                    What happens during a security breach?
-                    <span class="faq-arrow">▼</span>
-                </button>
-                <div class="faq-answer">
-                    Even in the unlikely event of a breach, your data remains secure due to local encryption. Attackers would only access encrypted data that's useless without your personal passphrase.
+                <div class="visual-item icon-bubble icon-2">
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </div>
+                <div class="visual-item icon-bubble icon-3">
+                    <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" stroke="#3b82f6" fill="none" stroke-width="2"/>
+                    </svg>
                 </div>
             </div>
         </section>
 
-        <footer class="footer" id="contact">
-            <p>&copy; 2024 CyberVault Dashboard. Securing your financial future with cutting-edge encryption.</p>
+        <section id="features" class="fade-in-up">
+            <h2 class="section-title">A Comprehensive Security Platform</h2>
+            <div class="features">
+                 <div class="feature-card stagger-item">
+                    <h3>Core Encryption Engine</h3>
+                    <p>AES-256 encryption for all sensitive data (bank account, PAN, UPI, notes). Data is encrypted before being stored in MongoDB. Admins cannot decrypt user data.</p>
+                </div>
+                <div class="feature-card stagger-item">
+                    <h3>Secure User Authentication</h3>
+                    <p>Username/password registration with strong password checks, Gmail Login using Google OAuth2, and email-based OTP verification for 2FA.</p>
+                </div>
+                <div class="feature-card stagger-item">
+                    <h3>2-Factor Authentication (2FA)</h3>
+                    <p>An OTP sent via email is required for dashboard access. The OTP is regenerated securely and all attempts are logged for audit purposes.</p>
+                </div>
+                <div class="feature-card stagger-item">
+                    <h3>Role-Based Access Control (RBAC)</h3>
+                    <p>Two distinct roles: admin and viewer. Admins cannot view decrypted records, and viewers cannot access administrative tools, ensuring separation of duties.</p>
+                </div>
+                <div class="feature-card stagger-item">
+                    <h3>Admin Dashboard</h3>
+                    <p>View encrypted record metadata, access system/user logs via Splunk, enable/disable users, assign roles, and monitor usage statistics.</p>
+                </div>
+                <div class="feature-card stagger-item">
+                    <h3>Encryption Key Rotation</h3>
+                    <p>Users can rotate their encryption keys at any time from their dashboard, ensuring forward security and better cryptographic hygiene.</p>
+                </div>
+                 <div class="feature-card stagger-item">
+                    <h3>Encrypted Data Backup</h3>
+                    <p>Download all your encrypted data in a secure JSON format. Timestamps and metadata are preserved for easy restoration.</p>
+                </div>
+                 <div class="feature-card stagger-item">
+                    <h3>Splunk Integration & Logging</h3>
+                    <p>All logins, failed attempts, and critical operations are logged to Splunk. Admins can view logs in real time from the dashboard.</p>
+                </div>
+                 <div class="feature-card stagger-item">
+                    <h3>Suspicious Activity Detection</h3>
+                    <p>Rate limiting to prevent brute-force attacks. The system logs failed logins, reused passwords, and IP mismatches to flag potential threats.</p>
+                </div>
+            </div>
+        </section>
+        
+        <section class="faq-section fade-in-up" id="faq">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    How is my data encrypted?
+                    <span class="faq-arrow">↓</span>
+                </button>
+                <div class="faq-answer">
+                    Your data is protected with AES-256, a military-grade encryption standard. All information is encrypted on our servers before it is stored in our database, ensuring it is never stored in plaintext.
+                </div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    Can CyberVault employees or admins see my data?
+                    <span class="faq-arrow">↓</span>
+                </button>
+                <div class="faq-answer">
+                    No. We operate on a zero-knowledge principle. Your data is encrypted with a key that only you control. Our role-based access control prevents even privileged admins from decrypting or viewing your sensitive information.
+                </div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    What is 2-Factor Authentication (2FA)?
+                    <span class="faq-arrow">↓</span>
+                </button>
+                <div class="faq-answer">
+                    2FA adds an extra layer of security to your account. After entering your password, you'll be required to enter a one-time password (OTP) sent to your registered email address to verify your identity.
+                </div>
+            </div>
+             <div class="faq-item">
+                <button class="faq-question" onclick="toggleFAQ(this)">
+                    Why is key rotation important?
+                    <span class="faq-arrow">↓</span>
+                </button>
+                <div class="faq-answer">
+                    Regularly rotating your encryption key limits the amount of data exposed if a single key is ever compromised. It's a critical practice for maintaining long-term data security (known as forward security).
+                </div>
+            </div>
+        </section>
+
+        <section class="contact-section fade-in-up" id="contact">
+            <h2>Get in Touch</h2>
+            <p>Have questions about our security protocols or want to request a demo? Reach out to our team.</p>
+            <a href="mailto:security@cybervault.com" class="contact-button">Contact Us</a>
+        </section>
+
+        <footer class="footer">
+            <p>&copy; 2024 CyberVault. All Rights Reserved.</p>
         </footer>
     </div>
 
@@ -536,45 +829,83 @@
         function toggleFAQ(button) {
             const answer = button.nextElementSibling;
             const arrow = button.querySelector('.faq-arrow');
-            
+            const isActive = answer.classList.contains('active');
+
             // Close all other FAQs
-            document.querySelectorAll('.faq-answer').forEach(item => {
+            document.querySelectorAll('.faq-answer.active').forEach(item => {
                 if (item !== answer) {
                     item.classList.remove('active');
-                }
-            });
-            
-            document.querySelectorAll('.faq-arrow').forEach(item => {
-                if (item !== arrow) {
-                    item.classList.remove('rotated');
+                    item.previousElementSibling.querySelector('.faq-arrow').classList.remove('rotated');
                 }
             });
             
             // Toggle current FAQ
-            answer.classList.toggle('active');
-            arrow.classList.toggle('rotated');
+            if (isActive) {
+                answer.classList.remove('active');
+                arrow.classList.remove('rotated');
+            } else {
+                answer.classList.add('active');
+                arrow.classList.add('rotated');
+            }
         }
 
-        // Add intersection observer for animations
+        // Scroll Animation Observer
         const observerOptions = {
             threshold: 0.1,
-            rootMargin: '0px 0px -100px 0px'
+            rootMargin: '0px 0px -50px 0px'
         };
 
-        const observer = new IntersectionObserver((entries) => {
+        const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    entry.target.style.animationDelay = '0.2s';
-                    entry.target.classList.add('slide-in-left');
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
                 }
             });
         }, observerOptions);
 
-        // Observe feature cards for staggered animation
+        // Initialize scroll animations
         document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.feature-card').forEach((card, index) => {
-                card.style.animationDelay = `${index * 0.1}s`;
+            // Observe sections for fade-in animations
+            document.querySelectorAll('.fade-in-up').forEach(section => {
+                observer.observe(section);
+            });
+
+            // Staggered animation for feature cards
+            const featureCards = document.querySelectorAll('.stagger-item');
+            featureCards.forEach((card, index) => {
+                card.style.transitionDelay = `${index * 0.1}s`;
                 observer.observe(card);
+            });
+
+            // Observe hero visuals for entrance
+            const heroVisuals = document.querySelector('.hero-visuals');
+            if (heroVisuals) {
+                const visualItems = heroVisuals.querySelectorAll('.visual-item');
+                const heroObserver = new IntersectionObserver((entries) => {
+                    if (entries[0].isIntersecting) {
+                        visualItems.forEach((item, index) => {
+                            item.style.transitionDelay = `${index * 0.1}s`;
+                            item.classList.add('is-visible');
+                        });
+                        heroObserver.unobserve(heroVisuals); // Animate only once
+                    }
+                }, { threshold: 0.2 });
+                heroObserver.observe(heroVisuals);
+            }
+        });
+
+        // Smooth scroll with offset for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
             });
         });
     </script>

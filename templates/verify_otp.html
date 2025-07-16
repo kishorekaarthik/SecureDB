@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CyberVault - Verify OTP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #0f0f1a;
+      --text-primary: #ffffff;
+      --text-secondary: #8b9dc3;
+      --accent-primary: #6366f1;
+      --accent-secondary: #8b5cf6;
+      --border-subtle: rgba(139, 157, 195, 0.1);
+      --glow-primary: rgba(99, 102, 241, 0.4);
+      --card-bg: rgba(15, 15, 26, 0.85);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: radial-gradient(ellipse 800px 600px at 0% 0%, rgba(99, 102, 241, 0.15), transparent 50%),
+                  radial-gradient(ellipse 800px 600px at 100% 100%, rgba(139, 92, 246, 0.1), transparent 50%),
+                  linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    #particle-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+
+    .form-wrapper {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card-bg);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+      animation: slideIn 1s ease forwards;
+      opacity: 0;
+      transform: translateY(20px);
+      z-index: 1;
+      backdrop-filter: blur(40px);
+      position: relative;
+    }
+
+    .form-section {
+      padding: 3rem 2.5rem;
+    }
+
+    .header-section {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .form-title {
+      font-size: 1.8rem;
+      font-weight: 600;
+    }
+
+    .form-subtitle {
+      color: var(--text-secondary);
+      font-size: 1rem;
+    }
+
+    .form-group {
+      margin-top: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .form-input {
+      width: 100%;
+      background: rgba(10, 10, 15, 0.9);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 0.875rem 1rem;
+      border-radius: 8px;
+      font-size: 1.3rem;
+      letter-spacing: 0.5em;
+      text-align: center;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 20px var(--glow-primary);
+    }
+
+    .submit-button {
+      width: 100%;
+      padding: 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    .submit-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px var(--glow-primary);
+    }
+
+    @keyframes slideIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes shimmer {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="particle-canvas"></canvas>
+
+  <div class="form-wrapper">
+    <div class="form-section">
+      <div class="header-section">
+        {% if context == 'verify-email-otp' %}
+          <h1 class="form-title">Verify Registration OTP</h1>
+          <p class="form-subtitle">We’ve sent a 6-digit code to your email during registration.</p>
+        {% elif context == 'verify-login' %}
+          <h1 class="form-title">Verify Login OTP</h1>
+          <p class="form-subtitle">Enter the 6-digit code sent to your email to complete login.</p>
+        {% elif context == 'verify-forgot' %}
+          <h1 class="form-title">Reset Password OTP</h1>
+          <p class="form-subtitle">Check your inbox for the code to reset your password.</p>
+        {% else %}
+          <h1 class="form-title">Verify OTP</h1>
+          <p class="form-subtitle">Enter the 6-digit code sent to your email.</p>
+        {% endif %}
+      </div>
+
+      <form method="POST" 
+        {% if context == 'verify-email-otp' %}
+          action="{{ url_for('verify_email_otp') }}"
+        {% elif context == 'verify-login' %}
+          action="{{ url_for('verify_otp') }}"
+        {% elif context == 'verify-forgot' %}
+          action="{{ url_for('verify_forgot_otp') }}"
+        {% else %}
+          action="#"
+        {% endif %}
+      >
+        <div class="form-group">
+          <label class="form-label" for="otp">Enter OTP</label>
+          <input class="form-input" type="text" id="otp" name="otp" placeholder="••••••" maxlength="6" required />
+        </div>
+
+        <button type="submit" class="submit-button">Verify Code</button>
+      </form>
+    </div>
+  </div>
+</body>
+
+  <script>
+    const canvas = document.getElementById('particle-canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      let particlesArray = [];
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      class Particle {
+        constructor(x, y, dx, dy, size, color) {
+          this.x = x;
+          this.y = y;
+          this.dx = dx;
+          this.dy = dy;
+          this.size = size;
+          this.color = color;
+        }
+
+        draw() {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+        }
+
+        update() {
+          if (this.x > canvas.width || this.x < 0) this.dx *= -1;
+          if (this.y > canvas.height || this.y < 0) this.dy *= -1;
+          this.x += this.dx;
+          this.y += this.dy;
+          this.draw();
+        }
+      }
+
+      function initParticles() {
+        particlesArray = [];
+        const num = canvas.width * canvas.height / 15000;
+        const colors = ['rgba(99,102,241,0.5)', 'rgba(139,92,246,0.4)', 'rgba(255,255,255,0.3)'];
+
+        for (let i = 0; i < num; i++) {
+          const size = Math.random() * 2 + 1;
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const dx = (Math.random() - 0.5) * 0.5;
+          const dy = (Math.random() - 0.5) * 0.5;
+          const color = colors[Math.floor(Math.random() * colors.length)];
+          particlesArray.push(new Particle(x, y, dx, dy, size, color));
+        }
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particlesArray.forEach(p => p.update());
+      }
+
+      window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        initParticles();
+      });
+
+      initParticles();
+      animate();
+    }
+  </script>
+</body>
+</html>

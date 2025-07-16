@@ -1,74 +1,450 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    .record { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-    button { padding: 5px 10px; }
-    .actions form { display: inline; }
-    hr { margin-top: 30px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberVault - Secure Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #0f0f1a;
+            --text-primary: #ffffff;
+            --text-secondary: #8b9dc3;
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --danger: #f472b6;
+            --border-subtle: rgba(139, 157, 195, 0.1);
+            --border-accent: rgba(99, 102, 241, 0.3);
+            --glow-primary: rgba(99, 102, 241, 0.4);
+            --glow-danger: rgba(244, 114, 182, 0.4);
+            --card-bg: rgba(15, 15, 26, 0.8);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: 
+                radial-gradient(ellipse 800px 600px at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 800px 600px at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
+            font-weight: 400;
+        }
+        
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            margin-bottom: 3rem;
+            border-bottom: 1px solid var(--border-subtle);
+            animation: fadeInDown 1s ease-out 0.2s forwards;
+            opacity: 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .user-info {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        
+        /* Card Styles */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-subtle);
+            padding: 2rem;
+            border-radius: 16px;
+            margin-bottom: 3rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .card-title svg {
+            color: var(--accent-primary);
+        }
+
+        /* Form Styling */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .form-input,
+        .form-textarea {
+            width: 100%;
+            background: rgba(10, 10, 15, 0.9);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #fff;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            font-weight: 500;
+            font-family: 'Poppins', sans-serif;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px var(--glow-primary);
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, var(--danger), #c026d3);
+        }
+        
+        .btn.danger:hover {
+            box-shadow: 0 4px 15px var(--glow-danger);
+        }
+        
+        .btn.secondary {
+             background: var(--bg-secondary);
+             border: 1px solid var(--border-accent);
+        }
+
+        /* Records Section */
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .record-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-subtle);
+            padding: 1.5rem;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .record-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--border-accent);
+        }
+        
+        .record-field {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .record-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .record-value {
+            font-size: 1rem;
+            color: var(--text-primary);
+            word-break: break-all;
+            background: rgba(10, 10, 15, 0.5);
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+        
+        .record-actions {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .action-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .action-link:hover {
+            background: var(--accent-primary);
+            color: #fff;
+            border-color: var(--accent-primary);
+        }
+        
+        .action-link.delete {
+            color: var(--danger);
+        }
+
+        .action-link.delete:hover {
+            background: var(--danger);
+            color: #fff;
+            border-color: var(--danger);
+        }
+
+        .no-records {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 3rem;
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1px dashed var(--border-accent);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .header { flex-direction: column; gap: 1rem; text-align: center; }
+        }
+    </style>
 </head>
 <body>
+    <canvas id="particle-canvas"></canvas>
+    
+    <div class="container">
+        <header class="header">
+            <div class="logo">CyberVault</div>
+            <div class="user-info">Welcome, {{ session['username'] }} ({{ session['role'].capitalize() }})</div>
+        </header>
 
-<h2>{{ session['role'].capitalize() }} Dashboard</h2>
+        <div class="card" style="animation-delay: 0.1s;">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                {% if edit_id %}Update Record{% else %}Add New Record{% endif %}
+            </h3>
+            <form method="post">
+                {% if edit_id %}<input type="hidden" name="edit_id" value="{{ edit_id }}">{% endif %}
+                
+                <div class="form-group">
+                    <label for="bank_account">Bank Account:</label>
+                    <input type="text" id="bank_account" name="bank_account" class="form-input" value="{{ form_data.bank_account if form_data else '' }}" required>
+                </div>
 
-<form method="post">
-  {% if edit_id %}
-    <input type="hidden" name="edit_id" value="{{ edit_id }}">
-  {% endif %}
-  <label>Bank Account:</label><br>
-  <input name="bank_account" value="{{ form_data.bank_account if form_data else '' }}" required><br><br>
+                <div class="form-group">
+                    <label for="upi">UPI:</label>
+                    <input type="text" id="upi" name="upi" class="form-input" value="{{ form_data.upi if form_data else '' }}" required>
+                </div>
 
-  <label>UPI:</label><br>
-  <input name="upi" value="{{ form_data.upi if form_data else '' }}" required><br><br>
+                <div class="form-group">
+                    <label for="pan">PAN:</label>
+                    <input type="text" id="pan" name="pan" class="form-input" value="{{ form_data.pan if form_data else '' }}" required>
+                </div>
 
-  <label>PAN:</label><br>
-  <input name="pan" value="{{ form_data.pan if form_data else '' }}" required><br><br>
+                <div class="form-group">
+                    <label for="note">Note:</label>
+                    <textarea id="note" name="note" class="form-textarea">{{ form_data.note if form_data else '' }}</textarea>
+                </div>
 
-  <label>Note:</label><br>
-  <textarea name="note">{{ form_data.note if form_data else '' }}</textarea><br><br>
+                <button type="submit" class="btn">
+                    {{ 'Update Record' if edit_id else 'Add Record' }}
+                </button>
+            </form>
+        </div>
 
-  <button type="submit">{{ 'Update' if edit_id else 'Submit' }}</button>
-</form>
+        <div class="card" style="animation-delay: 0.2s;">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                Your Encrypted Records
+            </h3>
+            {% if records %}
+            <div class="records-grid">
+                {% for r in records %}
+                <div class="record-card">
+                    <div class="record-field">
+                        <span class="record-label">Bank Account</span>
+                        <span class="record-value">{{ r.bank_account }}</span>
+                    </div>
+                    <div class="record-field">
+                        <span class="record-label">UPI</span>
+                        <span class="record-value">{{ r.upi }}</span>
+                    </div>
+                    <div class="record-field">
+                        <span class="record-label">PAN</span>
+                        <span class="record-value">{{ r.pan }}</span>
+                    </div>
+                    <div class="record-field">
+                        <span class="record-label">Note</span>
+                        <span class="record-value">{{ r.note if r.note else 'N/A' }}</span>
+                    </div>
+                    <div class="record-actions">
+                        <a href="{{ url_for('dashboard', edit=r._id) }}" class="action-link">Edit</a>
+                        <a href="{{ url_for('delete_record', record_id=r._id) }}" class="action-link delete" onclick="return confirm('Are you sure you want to delete this record?')">Delete</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-records">
+                <p>You have no records. Add one above to get started.</p>
+            </div>
+            {% endif %}
+        </div>
 
-<hr>
+        <div class="card" style="animation-delay: 0.3s;">
+             <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                Account Actions
+            </h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                <form action="{{ url_for('change_passphrase') }}" method="post" style="display: inline;">
+                    <button type="submit" class="btn secondary">Change Encryption Passphrase</button>
+                </form>
+                <form action="{{ url_for('download_backup') }}" method="get" style="display: inline;">
+                    <button type="submit" class="btn secondary">Download Encrypted Backup</button>
+                </form>
+                <form action="{{ url_for('logout') }}" method="get" style="display: inline;">
+                    <button type="submit" class="btn danger">Logout</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('particle-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            let particlesArray;
+            canvas.width = window.innerWidth;
+            canvas.height = document.body.scrollHeight;
 
-<h3>Your Records:</h3>
-{% for r in records %}
-  <div class="record">
-    <strong>Bank:</strong> {{ r.bank_account }}<br>
-    <strong>UPI:</strong> {{ r.upi }}<br>
-    <strong>PAN:</strong> {{ r.pan }}<br>
-    <strong>Note:</strong> {{ r.note }}<br><br>
-    <a href="{{ url_for('dashboard', edit=r._id) }}">✏️ Edit</a> |
-    <a href="{{ url_for('delete_record', record_id=r._id) }}" onclick="return confirm('Delete this?')">🗑️ Delete</a>
-  </div>
-{% else %}
-  <p>No records found.</p>
-{% endfor %}
+            class Particle {
+                constructor(x, y, directionX, directionY, size, color) {
+                    this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; this.color = color;
+                }
+                draw() {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+                update() {
+                    if (this.x > canvas.width || this.x < 0) this.directionX = -this.directionX;
+                    if (this.y > canvas.height || this.y < 0) this.directionY = -this.directionY;
+                    this.x += this.directionX;
+                    this.y += this.directionY;
+                    this.draw();
+                }
+            }
 
-<hr>
+            function init() {
+                particlesArray = [];
+                let numberOfParticles = (canvas.height * canvas.width) / 12000;
+                const colors = ['rgba(99, 102, 241, 0.5)', 'rgba(139, 92, 246, 0.5)', 'rgba(255, 255, 255, 0.4)'];
+                for (let i = 0; i < numberOfParticles; i++) {
+                    let size = (Math.random() * 2) + 1;
+                    let x = (Math.random() * ((innerWidth - size * 2) - (size * 2)) + size * 2);
+                    let y = (Math.random() * ((innerHeight - size * 2) - (size * 2)) + size * 2);
+                    let directionX = (Math.random() * .4) - .2;
+                    let directionY = (Math.random() * .4) - .2;
+                    let color = colors[Math.floor(Math.random() * colors.length)];
+                    particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+                }
+            }
 
-<!-- 🔐 Change Encryption Passphrase -->
-<form action="{{ url_for('change_passphrase') }}" method="post">
-  <button type="submit">🔑 Change Encryption Passphrase</button>
-</form>
+            function animate() {
+                requestAnimationFrame(animate);
+                ctx.clearRect(0,0,innerWidth, innerHeight);
+                for (let i = 0; i < particlesArray.length; i++) {
+                    particlesArray[i].update();
+                }
+            }
 
-<br>
+            window.addEventListener('resize', function(){
+                canvas.width = innerWidth;
+                canvas.height = document.body.scrollHeight;
+                init();
+            });
 
-<!-- 📥 Download Backup -->
-<form action="{{ url_for('download_backup') }}" method="get">
-  <button type="submit">📥 Download Encrypted Backup (JSON)</button>
-</form>
-
-<br>
-
-<!-- 🚪 Logout -->
-<form action="{{ url_for('logout') }}" method="get">
-  <button type="submit">🚪 Logout</button>
-</form>
-
+            init();
+            animate();
+        }
+    </script>
 </body>
 </html>

@@ -3,8 +3,10 @@ from pymongo import MongoClient
 from flask_jwt_extended import JWTManager, create_access_token
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from email_utils import send_password_change_email
 from bson.objectid import ObjectId
 from functools import wraps
+from flask import flash
 from datetime import datetime, timezone
 import json
 import io
@@ -33,19 +35,18 @@ jwt = JWTManager(app)
 limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
-# MongoDB setup
+
 client = MongoClient("mongodb://localhost:27017/")
 db = client.securedb
 users = db.users
 secrets = db.secrets
-# Google OAuth Setup
+
 GOOGLE_CLIENT_ID = "36181066792-e8o4i6t9s6i5g0lktc6pof3c9o164ji8.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
+GOOGLE_CLIENT_SECRET = "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"
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-# 🔹 Gmail Registration Flow
 register_flow = Flow.from_client_secrets_file(
     "client_secret.json",
     scopes=[
@@ -56,7 +57,6 @@ register_flow = Flow.from_client_secrets_file(
     redirect_uri="https://127.0.0.1:5000/gmail-register/callback"
 )
 
-# 🔹 Gmail Login Flow
 login_flow = Flow.from_client_secrets_file(
     "client_secret.json",
     scopes=[
@@ -67,7 +67,7 @@ login_flow = Flow.from_client_secrets_file(
     redirect_uri="https://127.0.0.1:5000/gmail-login/callback"
 )
 
-# Admin IP whitelist
+
 ALLOWED_ADMIN_IPS = ["127.0.0.1", "::1"]
 
 def ip_whitelist_required(view_func):
@@ -108,47 +108,76 @@ def register():
                 "password": hash_password(password),
                 "otp": otp
             }
-            send_otp_email(email, otp)
+            try:
+                send_otp_email(email, otp)
+                log_event(f"OTP sent to {email} during normal registration")
+            except Exception as e:
+                print("❌ Failed to send OTP:", e)
+                return "Could not send OTP. Try again.", 500
             return redirect(url_for("verify_email_otp"))
 
     return render_template("register.html", message=message)
 
 @app.route("/gmail-register")
 def gmail_register():
-    auth_url, _ = register_flow.authorization_url(prompt="consent")
+    auth_url, state = register_flow.authorization_url(
+        prompt="consent",
+        access_type="offline",
+        include_granted_scopes="true"
+    )
+    session["register_state"] = state
     return redirect(auth_url)
+
+
 @app.route("/gmail-register/callback")
 def gmail_register_callback():
-    register_flow.fetch_token(authorization_response=request.url)
+    if request.args.get("state") != session.get("register_state"):
+        return "State mismatch. Try again.", 400
+
+    try:
+        register_flow.fetch_token(authorization_response=request.url)
+    except Exception as e:
+        print("❌ Failed to fetch token:", e)
+        return "Authorization failed. Please try again.", 400
 
     credentials = register_flow.credentials
+
     session_req = requests.Session()
     cached = cachecontrol.CacheControl(session_req)
     token_req = google.auth.transport.requests.Request(session=cached)
-    id_info = google.oauth2.id_token.verify_oauth2_token(
-        id_token=credentials._id_token,
-        request=token_req,
-        audience=GOOGLE_CLIENT_ID
-    )
+
+    try:
+        id_info = id_token.verify_oauth2_token(
+            credentials._id_token,  # token is in _id_token
+            token_req,
+            GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        return "Token verification failed", 400
 
     email = id_info.get("email")
     name = id_info.get("name")
 
-    existing = users.find_one({"email": email})
-    if existing:
-        return redirect(url_for("login"))  # User already registered
+    if users.find_one({"email": email}):
+        return redirect(url_for("login"))  # Already registered, go to login
 
-    # First-time Gmail registration
     otp = str(random.randint(100000, 999999))
     session["temp_user"] = {
         "username": name,
         "email": email,
-        "password": None,  # No password for Gmail login
+        "password": None,
         "otp": otp,
         "from_gmail": True
     }
-    send_otp_email(email, otp)
+
+    try:
+        send_otp_email(email, otp)
+    except Exception as e:
+        print("❌ Failed to send OTP email:", e)
+        return "Unable to send OTP. Try again.", 500
+
     return redirect(url_for("verify_email_otp"))
+
 
 
 @app.route("/verify-email-otp", methods=["GET", "POST"])
@@ -168,7 +197,7 @@ def verify_email_otp():
                 "created": datetime.now(),
                 "active": True
             }
-            if data.get("password"):  # 👈 Only add if password is present
+            if data.get("password"):
                 new_user["passwords"] = [data["password"]]
             users.insert_one(new_user)
 
@@ -179,48 +208,64 @@ def verify_email_otp():
 
         return "Invalid OTP", 403
 
-    return '''
-    <h3>Verify OTP</h3>
-    <form method="post">
-        <input type="text" name="otp" required>
-        <button type="submit">Verify OTP</button>
-    </form>
-    '''
+    return render_template("verify_otp.html", context="verify-email-otp")
+
 
 @app.route("/callback")
 def callback():
-    GOOGLE_FLOW.fetch_token(authorization_response=request.url)
+    login_flow.fetch_token(authorization_response=request.url)
 
-    if not session["state"] == request.args["state"]:
+    # Ensure the OAuth2 'state' matches
+    if session.get("state") != request.args.get("state"):
         return "State mismatch", 400
 
-    credentials = GOOGLE_FLOW.credentials
+    credentials = login_flow.credentials
     request_session = requests.session()
     cached_session = cachecontrol.CacheControl(request_session)
     token_request = google.auth.transport.requests.Request(session=cached_session)
 
-    id_info = google.oauth2.id_token.verify_oauth2_token(
-        credentials.id_token, token_request, GOOGLE_CLIENT_ID
-    )
+    try:
+        id_info = id_token.verify_oauth2_token(
+            credentials.id_token,  # ✅ Use public attribute
+            token_request,
+            GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        return "Token verification failed", 400
 
     email = id_info.get("email")
     user = users.find_one({"email": email})
 
     if not user:
-        session["temp_google_user"] = {"email": email}
-        return redirect(url_for("register_with_gmail"))
+        # Gmail user not yet registered
+        session["temp_google_user"] = {
+            "email": email,
+            "name": id_info.get("name")
+        }
+        return redirect(url_for("gmail_register"))
 
+    # Existing Gmail user → OTP verification step
     session["user_id"] = str(user["_id"])
     session["username"] = user["username"]
     session["role"] = user["role"]
-    session["token"] = create_access_token(identity={"username": user['username']})
-    session["otp_verified"] = True
-    log_event(f"Gmail login successful: {user['username']}")
-    return redirect(url_for("dashboard"))
+    session["token"] = create_access_token(identity={"username": user["username"]})
+    session.pop("otp_verified", None)
+
+    # Generate and send OTP
+    otp = str(random.randint(100000, 999999))
+    session["otp"] = otp
+    try:
+        send_otp_email(user["email"], otp)
+        log_event(f"Gmail login OTP sent to {user['username']}")
+    except Exception as e:
+        print(f"Failed to send OTP email to {user['username']}:", e)
+
+    return redirect(url_for("request_otp"))
 
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute", key_func=get_remote_address)
 def login():
     message = ""
     ip = request.remote_addr
@@ -229,20 +274,29 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
 
+        # 🔒 Lockout after 5 failures in session
+        fail_key = f"fail_count_{username}"
+        session[fail_key] = session.get(fail_key, 0)
+
+        if session[fail_key] >= 5:
+            return "Too many failed attempts. Please try again later.", 429
+
         # ✅ Hardcoded admin login
         if username == "admin" and password == "admin123":
+            session.clear()  # Clear lockout
             session["username"] = "admin"
             session["role"] = "admin"
             session["token"] = create_access_token(identity={"username": "admin"})
-            log_event("SUCCESSFUL LOGIN — admin (IP: {})".format(ip), "admin")
+            log_event(f"SUCCESSFUL LOGIN — admin (IP: {ip})", "admin")
             return redirect(url_for("admin_dashboard"))
 
-        # 🔒 Normal viewer login
         user = users.find_one({"username": username})
         if not user:
+            session[fail_key] += 1
             log_event(f"FAILED LOGIN — Unknown username: {username} (IP: {ip})", "system")
             message = "Invalid username"
         elif not user.get("active", True):
+            session[fail_key] += 1
             log_event(f"FAILED LOGIN — Disabled user: {username} (IP: {ip})", username)
             message = "User account disabled"
         elif "passwords" not in user:
@@ -250,6 +304,7 @@ def login():
         else:
             if any(check_password(password, old) for old in user["passwords"]):
                 if check_password(password, user["passwords"][0]):
+                    session.clear()  
                     session["user_id"] = str(user["_id"])
                     session["username"] = user["username"]
                     session["role"] = user["role"]
@@ -258,13 +313,109 @@ def login():
                     log_event(f"SUCCESSFUL LOGIN — {username} (IP: {ip})", username)
                     return redirect(url_for("request_otp"))
                 else:
+                    session[fail_key] += 1
                     log_event(f"FAILED LOGIN — Reused old password: {username} (IP: {ip})", username)
                     message = "Password recently used or incorrect"
             else:
+                session[fail_key] += 1
                 log_event(f"FAILED LOGIN — Wrong password: {username} (IP: {ip})", username)
                 message = "Wrong password"
 
     return render_template("login.html", message=message)
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form["email"]
+        user = users.find_one({"email": email})
+        if not user or "passwords" not in user:
+            return "Email not found or password reset not supported.", 404
+
+        otp = str(random.randint(100000, 999999))
+        session["reset_otp"] = otp
+        session["reset_email"] = email
+        send_otp_email(email, otp)
+        return redirect(url_for("verify_forgot_otp"))  # exact route function name
+
+
+    return render_template("forgot_password.html")
+
+@app.route("/forgot-password/verify-otp", methods=["GET", "POST"])
+def verify_forgot_otp():
+    if "reset_email" not in session or "reset_otp" not in session:
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        entered_otp = request.form["otp"]
+        if entered_otp == session["reset_otp"]:
+            # Set verified user info
+            user = users.find_one({"email": session["reset_email"]})
+            if not user:
+                return "User not found", 404
+
+            session["reset_user"] = {"email": user["email"]}
+            session.pop("reset_otp", None)
+            session.pop("reset_email", None)
+
+            return redirect(url_for("set_new_password"))
+        else:
+            flash("Invalid OTP. Please try again.", "error")
+
+    return render_template("verify_otp.html")
+
+
+@app.route("/forgot-password/set-new-password", methods=["GET", "POST"])
+def set_new_password():
+    if "reset_user" not in session:
+        return redirect(url_for("forgot_password"))
+
+    email = session["reset_user"]["email"]
+    user = users.find_one({"email": email})
+
+    if not user:
+        return "User not found", 404
+
+    if request.method == "POST":
+        new_password = request.form["new_password"]
+        confirm_password = request.form["confirm_password"]
+
+        if new_password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("set_new_password.html")
+
+        # Validate password
+        valid, msg = validate_password_strength(new_password)
+        if not valid:
+            flash(f"Password policy violation: {msg}", "error")
+            return render_template("set_new_password.html")
+
+        if "passwords" in user and any(check_password(new_password, old) for old in user["passwords"]):
+            flash("Password was used recently. Choose a new one.", "error")
+            return render_template("set_new_password.html")
+
+        hashed = hash_password(new_password)
+        users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"passwords": [hashed] + user.get("passwords", [])[:2]}}  # Keep 3 latest
+        )
+
+        session.pop("reset_user", None)
+
+        # Send email notification
+        ip = request.remote_addr
+        user_agent = request.headers.get("User-Agent", "Unknown Device")
+        try:
+            send_password_change_email(email, ip, user_agent)
+        except Exception as e:
+            print(f"Failed to send confirmation email: {e}")
+
+        flash("✅ Your password has been changed successfully!", "success")
+        return redirect(url_for("login"))
+
+    return render_template("set_new_password.html")
+
+
+
 
 @app.route("/gmail-login")
 def gmail_login():
@@ -290,21 +441,23 @@ def gmail_login_callback():
     token_req = google.auth.transport.requests.Request(session=cached)
 
     try:
-        idinfo = id_token.verify_oauth2_token(
-            credentials._id_token, token_req, GOOGLE_CLIENT_ID
+        id_info = id_token.verify_oauth2_token(
+            credentials.id_token,  # ✅ Use public attribute
+            token_req,
+            GOOGLE_CLIENT_ID
         )
     except ValueError:
         return "Token verification failed", 400
 
-    email = idinfo.get("email")
+    email = id_info.get("email")
     user = users.find_one({"email": email})
 
     if not user:
-        # Gmail user not registered yet → go to Gmail registration
-        session["temp_google_user"] = {"email": email, "name": idinfo.get("name")}
+        # Unregistered Gmail user – redirect to Gmail registration
+        session["temp_google_user"] = {"email": email, "name": id_info.get("name")}
         return redirect(url_for("gmail_register"))
 
-    # User exists → continue with OTP
+    # Existing user – issue OTP
     session["user_id"] = str(user["_id"])
     session["username"] = user["username"]
     session["role"] = user["role"]
@@ -325,30 +478,27 @@ def gmail_login_callback():
 
 @app.route("/request-otp")
 def request_otp():
-    if "user_id" not in session:
+    if "user_id" not in session or "username" not in session:
         return redirect(url_for("login"))
 
     username = session["username"]
-    otp = session.get("otp")
+    user = users.find_one({"username": username})
 
-    if not otp:
-        # Fallback: regenerate OTP if it doesn't exist in session
-        otp = str(random.randint(100000, 999999))
-        session["otp"] = otp
+    if not user or "email" not in user:
+        return "Account issue: Email not found. Contact admin.", 400
 
-        user = users.find_one({"username": username})
-        if user and "email" in user:
-            try:
-                send_otp_email(user["email"], otp)
-                log_event(f"Re-sent OTP to {username} (via fallback)", username)
-            except Exception as e:
-                print(f"[ERROR] Failed to send OTP email to {username}: {e}")
-        else:
-            print(f"[WARN] No email found for user: {username}")
+    otp = str(random.randint(100000, 999999))
+    session["otp"] = otp
 
-    return '''
-    <p>OTP has been sent to your registered email. Proceed to <a href="/verify-otp">Verify OTP</a>.</p>
-    '''
+    try:
+        send_otp_email(user["email"], otp)
+        log_event(f"OTP sent to {username} ({user['email']})", username)
+    except Exception as e:
+        print(f"[ERROR] Failed to send OTP to {username}: {e}")
+        return "Could not send OTP. Please try again.", 500
+
+    return redirect(url_for("verify_otp"))
+
 
 
 @app.route("/verify-otp", methods=["GET", "POST"])
@@ -360,16 +510,13 @@ def verify_otp():
         user_otp = request.form["otp"]
         if user_otp == session.get("otp"):
             session["otp_verified"] = True
+            log_event(f"OTP verified successfully for {session['username']}")
             return redirect(url_for("dashboard"))
         return "Invalid OTP", 403
 
-    return '''
-    <h3>Enter OTP</h3>
-    <form method="post">
-        <input type="text" name="otp" required>
-        <button type="submit">Verify</button>
-    </form>
-    '''
+    return render_template("verify_otp.html", context="verify-login")
+
+
 @app.route("/dashboard", methods=["GET", "POST"])
 @limiter.limit("10/minute")
 def dashboard():
@@ -596,7 +743,7 @@ def change_role(uid):
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("home"))  # Redirect to landing page
+    return redirect(url_for("home"))  
 
 
 if __name__ == "__main__":

@@ -1,78 +1,501 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Admin Dashboard</title>
-  <style>
-    body { font-family: Arial; margin: 30px; background: #fafafa; }
-    h2, h3 { color: #2c3e50; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }
-    th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
-    th { background: #e0e0e0; }
-    .disabled { color: red; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberVault - Admin Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #0f0f1a;
+            --text-primary: #ffffff;
+            --text-secondary: #8b9dc3;
+            --text-muted: #4a5568;
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --danger: #f472b6;
+            --border-subtle: rgba(139, 157, 195, 0.1);
+            --border-accent: rgba(99, 102, 241, 0.3);
+            --glow-primary: rgba(99, 102, 241, 0.4);
+            --glow-danger: rgba(244, 114, 182, 0.4);
+            --card-bg: rgba(15, 15, 26, 0.8);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: 
+                radial-gradient(ellipse 800px 600px at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 800px 600px at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
+            font-weight: 400;
+        }
+        
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            margin-bottom: 3rem;
+            border-bottom: 1px solid var(--border-subtle);
+            animation: fadeInDown 1s ease-out 0.2s forwards;
+            opacity: 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .admin-badge {
+            background: linear-gradient(135deg, var(--danger), #c026d3);
+            color: var(--text-primary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            animation: pulse-glow 2s ease-in-out infinite alternate;
+        }
+        
+        /* Card Styles */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-subtle);
+            padding: 2rem;
+            border-radius: 16px;
+            margin-bottom: 3rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .card-title svg {
+            color: var(--accent-primary);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .stat-item {
+            background: rgba(10, 10, 15, 0.5);
+            border: 1px solid var(--border-subtle);
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-5px);
+            background: rgba(10, 10, 15, 0.8);
+            border-color: var(--border-accent);
+        }
+
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+
+        /* Table Styling */
+        .modern-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .modern-table th, .modern-table td {
+            padding: 1rem 1.25rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .modern-table th {
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: rgba(10, 10, 15, 0.5);
+        }
+        
+        .modern-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .modern-table tr:hover {
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .modern-table tr.disabled {
+            background: rgba(244, 114, 182, 0.05);
+            color: var(--danger);
+        }
+        
+        .modern-table tr.disabled:hover {
+            background: rgba(244, 114, 182, 0.1);
+        }
+
+        /* Form Styling */
+        .inline-form {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .form-select {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.8rem;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: var(--accent-secondary);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+            font-family: 'Poppins', sans-serif;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px var(--glow-primary);
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, var(--danger), #c026d3);
+        }
+        
+        .btn.danger:hover {
+            box-shadow: 0 4px 15px var(--glow-danger);
+        }
+        
+        .btn.secondary {
+             background: var(--bg-secondary);
+             border: 1px solid var(--border-accent);
+        }
+
+        /* Status Indicators */
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+        .status-active {
+            color: #4ade80;
+        }
+        .status-disabled {
+            color: var(--danger);
+        }
+
+        /* Logs & Data Containers */
+        .logs-container, .encrypted-data {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-subtle);
+            padding: 1.5rem;
+            border-radius: 12px;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .logs-container::-webkit-scrollbar, .encrypted-data::-webkit-scrollbar {
+            width: 8px;
+        }
+        .logs-container::-webkit-scrollbar-track, .encrypted-data::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        .logs-container::-webkit-scrollbar-thumb, .encrypted-data::-webkit-scrollbar-thumb {
+            background: var(--border-accent);
+            border-radius: 4px;
+        }
+
+        /* Logout Button */
+        .logout-button {
+            background: linear-gradient(135deg, var(--danger), #c026d3);
+            color: #ffffff;
+            border: none;
+            padding: 1rem 2rem;
+            font-weight: 600;
+            font-family: 'Poppins', sans-serif;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 1rem;
+        }
+
+        .logout-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px var(--glow-danger);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 5px var(--danger); }
+            100% { box-shadow: 0 0 20px var(--danger), 0 0 30px var(--danger); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .header { flex-direction: column; gap: 1rem; text-align: center; }
+            .modern-table { font-size: 0.8rem; }
+            .modern-table th, .modern-table td { padding: 0.75rem; }
+            .inline-form { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+        }
+    </style>
 </head>
 <body>
+    <canvas id="particle-canvas"></canvas>
+    <div class="container">
+        <header class="header">
+            <div class="logo">CyberVault</div>
+            <div class="admin-badge">Admin Console</div>
+        </header>
 
-<h2>🔐 SecureDB Admin Dashboard</h2>
+        <div class="card" style="animation-delay: 0.1s;">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6M12 8V4m8 8h-6M4 12h6m12 6l-4-4M4 20l4-4M8 4l4 4m0 0l4 4"/></svg>
+                System Intelligence
+            </h3>
+            <div class="stats-grid">
+                <div class="stat-item"><div class="stat-value">{{ total_users }}</div><div class="stat-label">Total Users</div></div>
+                <div class="stat-item"><div class="stat-value">{{ total_viewers }}</div><div class="stat-label">Viewers</div></div>
+                <div class="stat-item"><div class="stat-value">{{ total_admins }}</div><div class="stat-label">Admins</div></div>
+                <div class="stat-item"><div class="stat-value">{{ total_records }}</div><div class="stat-label">Records</div></div>
+                <div class="stat-item"><div class="stat-value">{{ total_keys }}</div><div class="stat-label">Key Versions</div></div>
+            </div>
+        </div>
 
-<h3>📊 System Stats</h3>
-<ul>
-  <li>Total Users: {{ total_users }}</li>
-  <li>Total Viewers: {{ total_viewers }}</li>
-  <li>Total Admins: {{ total_admins }}</li>
-  <li>Total Records: {{ total_records }}</li>
-  <li>Key Versions: {{ total_keys }}</li>
-</ul>
+        <div class="card" style="animation-delay: 0.2s;">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                User Access Control
+            </h3>
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>Username</th><th>Role</th><th>Status</th><th>Change Role</th><th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in user_list %}
+                    <tr class="{{ 'disabled' if not user.active }}">
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.role.upper() }}</td>
+                        <td>
+                            <span class="status {{ 'status-active' if user.active else 'status-disabled' }}">●</span>
+                            {{ 'ACTIVE' if user.active else 'DISABLED' }}
+                        </td>
+                        <td>
+                            <form method="post" action="{{ url_for('change_role', uid=user._id) }}" class="inline-form">
+                                <select name="new_role" class="form-select">
+                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>VIEWER</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ADMIN</option>
+                                </select>
+                                <button type="submit" class="btn secondary">Update</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="{{ url_for('toggle_user', uid=user._id) }}" class="inline-form">
+                                <button type="submit" class="btn {{ 'danger' if user.active else '' }}">
+                                    {{ 'DISABLE' if user.active else 'ENABLE' }}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
-<h3>👥 Manage Users</h3>
-<table>
-  <tr><th>Username</th><th>Role</th><th>Status</th><th>Change Role</th><th>Action</th></tr>
-  {% for user in user_list %}
-  <tr class="{{ 'disabled' if not user.active }}">
-    <td>{{ user.username }}</td>
-    <td>{{ user.role }}</td>
-    <td>{{ 'Active' if user.active else 'Disabled' }}</td>
-    <td>
-      <form method="post" action="{{ url_for('change_role', uid=user._id) }}">
-        <select name="new_role">
-          <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>viewer</option>
-          <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>admin</option>
-        </select>
-        <button type="submit">Update</button>
-      </form>
-    </td>
-    <td>
-      <form method="post" action="{{ url_for('toggle_user', uid=user._id) }}">
-        <button type="submit">{{ 'Disable' if user.active else 'Enable' }}</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-
-<h3>🧾 Recent Audit Logs</h3>
-<pre style="background:#f0f0f0; padding:10px; max-height:300px; overflow:auto;">
-{% for line in logs %}
-{{ line.strip() }}
+        <div class="card" style="animation-delay: 0.3s;">
+             <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                System Audit Trail
+            </h3>
+            <div class="logs-container">
+{% for line in logs %}{{ line.strip() }}
 {% endfor %}
-</pre>
+            </div>
+        </div>
 
-<h3>📦 Encrypted Records (User Submitted)</h3>
-<table>
-  <tr><th>Username</th><th>Encrypted Data</th><th>Timestamp</th></tr>
-  {% for record in encrypted_records %}
-  <tr>
-    <td>{{ record.username }}</td>
-    <td><pre>{{ record.data | tojson(indent=2) }}</pre></td>
-    <td>{{ record.created }}</td>
-  </tr>
-  {% endfor %}
-</table>
-<!-- 🚪 Admin Logout -->
-<form action="{{ url_for('logout') }}" method="get">
-  <button type="submit">🚪 Logout</button>
-</form>
+        <div class="card" style="animation-delay: 0.4s;">
+            <h3 class="card-title">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                Encrypted Data Vault
+            </h3>
+            <div style="max-height: 500px; overflow-y: auto;">
+                <table class="modern-table">
+                    <thead><tr><th>Username</th><th>Encrypted Data</th><th>Timestamp</th></tr></thead>
+                    <tbody>
+                        {% for record in encrypted_records %}
+                        <tr>
+                            <td>{{ record.username }}</td>
+                            <td><div class="encrypted-data">{{ record.data | tojson(indent=2) }}</div></td>
+                            <td>{{ record.created }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
+        <div class="card" style="text-align: center; animation-delay: 0.5s;">
+            <form action="{{ url_for('logout') }}" method="get">
+                <button type="submit" class="logout-button">Terminate Admin Session</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Particle animation script
+        const canvas = document.getElementById('particle-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            let particlesArray;
 
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            class Particle {
+                constructor(x, y, directionX, directionY, size, color) {
+                    this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; this.color = color;
+                }
+                draw() {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+                update() {
+                    if (this.x > canvas.width || this.x < 0) this.directionX = -this.directionX;
+                    if (this.y > canvas.height || this.y < 0) this.directionY = -this.directionY;
+                    this.x += this.directionX;
+                    this.y += this.directionY;
+                    this.draw();
+                }
+            }
+
+            function init() {
+                particlesArray = [];
+                let numberOfParticles = (canvas.height * canvas.width) / 12000;
+                const colors = ['rgba(99, 102, 241, 0.5)', 'rgba(139, 92, 246, 0.5)', 'rgba(255, 255, 255, 0.4)'];
+                for (let i = 0; i < numberOfParticles; i++) {
+                    let size = (Math.random() * 2) + 1;
+                    let x = (Math.random() * ((innerWidth - size * 2) - (size * 2)) + size * 2);
+                    let y = (Math.random() * ((innerHeight - size * 2) - (size * 2)) + size * 2);
+                    let directionX = (Math.random() * .4) - .2;
+                    let directionY = (Math.random() * .4) - .2;
+                    let color = colors[Math.floor(Math.random() * colors.length)];
+                    particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+                }
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                ctx.clearRect(0,0,innerWidth, innerHeight);
+                for (let i = 0; i < particlesArray.length; i++) {
+                    particlesArray[i].update();
+                }
+            }
+
+            window.addEventListener('resize', function(){
+                canvas.width = innerWidth;
+                canvas.height = innerHeight;
+                init();
+            });
+
+            init();
+            animate();
+        }
+    </script>
 </body>
 </html>
