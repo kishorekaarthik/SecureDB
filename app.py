@@ -39,8 +39,8 @@ db = client.securedb
 users = db.users
 secrets = db.secrets
 # Google OAuth Setup
-GOOGLE_CLIENT_ID = "36181066792-e8o4i6t9s6i5g0lktc6pof3c9o164ji8.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
+GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID"
+GOOGLE_CLIENT_SECRET = "YOUR_CLIENT_SECRET"
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
