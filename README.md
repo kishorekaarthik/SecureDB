@@ -17,7 +17,7 @@ CyberVault is a secure, Flask-based web application designed to store, encrypt, 
 
 
 
-### 🛡️ Admin Features (Hardcoded: `admin / admin123`)
+### 🛡️ Admin Features 
 - 📊 **Admin Dashboard** with:
   - Total Users
   - Encrypted Records Count
