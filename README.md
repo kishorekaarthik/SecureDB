@@ -2,8 +2,6 @@
 
 CyberVault is a secure, Flask-based web application designed to store, encrypt, and manage users' sensitive data with advanced authentication, encryption, and admin monitoring capabilities. Built with modern security practices, it provides secure data storage, OTP-based authentication, and an audit-ready logging system using Splunk.
 
----
-
 ## 🚀 Features
 
 ### 🧑‍💼 User Functionality
@@ -17,7 +15,7 @@ CyberVault is a secure, Flask-based web application designed to store, encrypt, 
 - 📥 **Download Encrypted JSON Backup**
 - 🆘 **Forgot Password Flow with OTP Verification**
 
----
+
 
 ### 🛡️ Admin Features (Hardcoded: `admin / admin123`)
 - 📊 **Admin Dashboard** with:
@@ -51,7 +49,6 @@ CyberVault is a secure, Flask-based web application designed to store, encrypt, 
   - Decrypt Events
 - 🕵️‍♂️ **Secure Admin UI** with Role-based Access Control (RBAC)
 
----
 
 ## ⚙️ Technologies Used
 
@@ -68,7 +65,6 @@ CyberVault is a secure, Flask-based web application designed to store, encrypt, 
 | JWT           | Secure Session Authentication    |
 | dotenv        | Config Management                |
 
----
 
 ## 🧪 Setup Instructions
 
@@ -113,7 +109,7 @@ SPLUNK_HOST=http://localhost:8088
 python app.py
 ```
 
----
+
 
 ## 🧪 Sample Test Users
 
@@ -122,7 +118,7 @@ python app.py
 | kishore  | Test\@1234 | Viewer |
 | admin    | admin123   | Admin  |
 
----
+
 
 ## 📁 Folder Structure
 
@@ -145,7 +141,6 @@ CyberVault/
 └── README.md               # This file
 ```
 
----
 
 ## 📦 Future Enhancements
 
@@ -154,7 +149,6 @@ CyberVault/
 * 🌐 WebSocket-based Real-Time Alerts
 * ☁️ Cloud Backup Support
 
----
 
 ## 👨‍💻 Maintainer
 
