@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environment
+# Virtual environments
 venv/
 ENV/
 env/
@@ -13,46 +13,69 @@ env/
 instance/
 *.db
 *.sqlite3
+*.pid
+*.sock
 
-# Secrets
-*.env
+# Secrets / Environment variables
+.env
 .env.*
+*.env
 client_secret.json
 keyvault.json
+token.json
+oauth_token.json
 
-# Logs
-*.log
-logs/
-access.log
-error.log
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Pytest / coverage / mypy
-.coverage
-.tox/
-.mypy_cache/
-.pytest_cache/
-
-# VS Code and IDE files
-.vscode/
-.idea/
-*.swp
-
-# Backup / Export
-*.bak
-*.old
-*.json.bak
-securedb_backup.json
-
-# SSL certificates
+# Certificates & Keys
 cert.pem
 key.pem
 splunk_cert.pem
 *.crt
 *.key
 
+# Logs
+*.log
+logs/
+access.log
+error.log
+ngrok.log
+
+# Docker
+*.pid
+*.sock
+*.db
+*.sqlite
+docker-compose.override.yml
+
+# OS system files
+.DS_Store
+Thumbs.db
+
+# Pytest / Coverage / MyPy
+.coverage
+.tox/
+.mypy_cache/
+.pytest_cache/
+coverage.xml
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Cache / build
+__pypackages__/
+build/
+dist/
+*.egg-info/
+
+# Backup / Export
+*.bak
+*.old
+*.json.bak
+securedb_backup.json
+dump.json
+
 # OAuth cache
 .token.json
+.cache/

@@ -6,6 +6,8 @@ bcrypt
 marshmallow
 requests
 email-validator
+pycryptodome
+
 
 # Google OAuth
 google-auth

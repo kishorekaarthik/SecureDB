@@ -28,24 +28,31 @@ import google.auth.transport.requests
 from pip._vendor import cachecontrol
 
 app = Flask(__name__)
-app.secret_key = "super-secret-key"
-app.config["JWT_SECRET_KEY"] = "jwt-super-secret"
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
 jwt = JWTManager(app)
 limiter = Limiter(key_func=get_remote_address)
 limiter.init_app(app)
 
 
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient(os.getenv("MONGO_URI"))
 db = client.securedb
 users = db.users
 secrets = db.secrets
 
-GOOGLE_CLIENT_ID = "36181066792-e8o4i6t9s6i5g0lktc6pof3c9o164ji8.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = os.getenv("OAUTHLIB_INSECURE_TRANSPORT", "1")
+
+APP_HOST = os.getenv("APP_HOST", "localhost")
+APP_PORT = os.getenv("APP_PORT", "5000")
+
+REDIRECT_URI_REGISTER = f"https://{APP_HOST}/gmail-register/callback"
+REDIRECT_URI_LOGIN = f"https://{APP_HOST}/gmail-login/callback"
+
 
 register_flow = Flow.from_client_secrets_file(
     "client_secret.json",
@@ -54,7 +61,7 @@ register_flow = Flow.from_client_secrets_file(
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
-    redirect_uri="https://127.0.0.1:5000/gmail-register/callback"
+    redirect_uri=REDIRECT_URI_REGISTER
 )
 
 login_flow = Flow.from_client_secrets_file(
@@ -64,11 +71,11 @@ login_flow = Flow.from_client_secrets_file(
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
-    redirect_uri="https://127.0.0.1:5000/gmail-login/callback"
+    redirect_uri=REDIRECT_URI_LOGIN
 )
 
 
-ALLOWED_ADMIN_IPS = ["127.0.0.1", "::1"]
+ALLOWED_ADMIN_IPS = ["127.0.0.1", "::1", "106.51.177.120"]
 
 def ip_whitelist_required(view_func):
     @wraps(view_func)
@@ -148,7 +155,7 @@ def gmail_register_callback():
 
     try:
         id_info = id_token.verify_oauth2_token(
-            credentials._id_token,  # token is in _id_token
+            credentials.id_token,  # token is in _id_token
             token_req,
             GOOGLE_CLIENT_ID
         )
@@ -745,6 +752,5 @@ def logout():
     session.clear()
     return redirect(url_for("home"))  
 
-
 if __name__ == "__main__":
-    app.run(debug=True, ssl_context=("cert.pem", "key.pem"))
+    app.run(host="0.0.0.0", port=5000, debug=True)
