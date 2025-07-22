@@ -7,10 +7,11 @@ services:
       - .env
     depends_on:
       - mongo
+      - splunk
     volumes:
       - .:/app
     restart: always
-    command: python app.py  # Ensures SSL is launched properly
+    command: python app.py
 
   mongo:
     image: mongo:latest
@@ -19,5 +20,18 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  splunk:
+    image: splunk/splunk:latest
+    container_name: splunk
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_PASSWORD=admin123  # ✅ Set secure password
+    ports:
+      - "8000:8000"   # Splunk Web UI
+      - "8089:8089"   # Splunk REST API for SDK
+    volumes:
+      - splunk_data:/opt/splunk
+
 volumes:
   mongo_data:
+  splunk_data:

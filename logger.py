@@ -10,7 +10,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 🔸 Splunk HEC Config (for Logging Events)
 # --------------------
 HEC_URL = "http://localhost:8088/services/collector"
-HEC_TOKEN = "YOUR_SPLUNK_HEC_TOKEN"
+HEC_TOKEN = "a5f1e706-6748-43ac-8443-64c6c1df2812"
 HEC_SOURCETYPE = "securedb"
 
 def log_event(action, user="admin"):
@@ -35,7 +35,7 @@ def log_event(action, user="admin"):
 # --------------------
 # 🔸 Splunk REST API Config (for Fetching Logs)
 # --------------------
-API_URL = "https://localhost:8089"
+API_URL = "https://host.docker.internal:8089"
 SPLUNK_USER = "admin"
 SPLUNK_PASS = "admin123"
 SPLUNK_INDEX = "main"

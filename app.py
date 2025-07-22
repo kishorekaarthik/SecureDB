@@ -80,10 +80,17 @@ ALLOWED_ADMIN_IPS = ["127.0.0.1", "::1", "106.51.177.120"]
 def ip_whitelist_required(view_func):
     @wraps(view_func)
     def wrapped_view(*args, **kwargs):
-        user_ip = request.remote_addr
+        # ngrok sets the real IP in this header
+        user_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+
+        # Only take the first IP if multiple are in the header
+        if "," in user_ip:
+            user_ip = user_ip.split(",")[0].strip()
+
         if user_ip not in ALLOWED_ADMIN_IPS:
             log_event(f"Blocked admin access from IP: {user_ip}", "system")
             return "Access denied: unauthorized IP", 403
+
         return view_func(*args, **kwargs)
     return wrapped_view
 
