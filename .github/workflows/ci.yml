@@ -29,7 +29,7 @@ jobs:
       SECUREDB_DATABASE_URL: postgresql+psycopg://securedb_app:ci-app-pw@localhost:5432/securedb_test
       SECUREDB_MIGRATION_DATABASE_URL: postgresql+psycopg://securedb_owner:ci-owner-pw@localhost:5432/securedb_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -58,7 +58,7 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
