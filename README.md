@@ -28,7 +28,8 @@ uv run securedb serve                         # http://127.0.0.1:8000/docs
 - A random 256-bit **master key** lives in the OS keychain (or in a file encrypted with an
   Argon2id-derived key). It never touches the database.
 - Each tenant gets its own **data key** and **lookup key**, stored only wrapped (AES-256-GCM)
-  by the master key, in a table guarded by forced PostgreSQL row-level security.
+  by the master key. Data keys live in a table guarded by forced PostgreSQL row-level security,
+  and the key ring refuses to release any tenant key outside that tenant's database context.
 - Every value is encrypted with AES-256-GCM, with its tenant, token, type and key version bound
   in as associated data, so a ciphertext moved to another tenant or token fails to decrypt.
 - If the master key cannot be unlocked the API still starts, but `/readyz` reports

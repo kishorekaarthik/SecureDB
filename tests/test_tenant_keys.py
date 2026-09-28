@@ -162,3 +162,31 @@ def test_data_key_repr_hides_the_key() -> None:
     text_repr = repr(DataKey(version=3, key=key))
     assert text_repr == "DataKey(version=3)"
     assert key.hex() not in text_repr
+
+
+def test_cached_dek_is_not_served_under_another_tenants_context(
+    db: Database, key_provider: LocalKeyProvider
+) -> None:
+    keyring = KeyRing(key_provider)
+    first = create_tenant_with_keys(db, keyring, "acme")
+    second = create_tenant_with_keys(db, keyring, "globex")
+    with db.tenant_session(first) as session:
+        keyring.dek(session, first, 1)  # warm the cache
+    with db.tenant_session(second) as session, pytest.raises(NotFound):
+        keyring.dek(session, first, 1)
+    with db.session() as session, pytest.raises(NotFound):
+        keyring.active_dek(session, first)
+
+
+def test_lookup_key_requires_the_tenants_own_context(
+    db: Database, key_provider: LocalKeyProvider
+) -> None:
+    keyring = KeyRing(key_provider)
+    first = create_tenant_with_keys(db, keyring, "acme")
+    second = create_tenant_with_keys(db, keyring, "globex")
+    with db.session() as session, pytest.raises(NotFound):
+        keyring.lookup_key(session, first)  # cold cache, no context
+    with db.tenant_session(first) as session:
+        keyring.lookup_key(session, first)  # warm the cache
+    with db.tenant_session(second) as session, pytest.raises(NotFound):
+        keyring.lookup_key(session, first)
