@@ -63,3 +63,13 @@ def test_docs_enabled_only_in_dev(env: str, enabled: bool) -> None:
         _env_file=None, env=env, database_url=APP_URL, migration_database_url=OWNER_URL
     )
     assert settings.docs_enabled is enabled
+
+
+def test_validation_errors_do_not_echo_database_passwords() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            _env_file=None,
+            database_url="postgresql://app:S3cretPw@localhost/securedb",
+            migration_database_url=OWNER_URL,
+        )
+    assert "S3cretPw" not in str(exc_info.value)

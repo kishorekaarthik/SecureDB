@@ -15,6 +15,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Database URLs carry passwords; never echo rejected values in errors.
+        hide_input_in_errors=True,
     )
 
     env: Literal["dev", "test", "prod"] = "dev"
