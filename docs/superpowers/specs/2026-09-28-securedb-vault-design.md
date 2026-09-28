@@ -208,7 +208,7 @@ API-key scopes: `tokenize`, `detokenize`, `subjects:erase`, `subjects:export`, `
 
 ## 6. Testing
 
-- pytest against a real PostgreSQL 17 (a dedicated test database; each test runs in a transaction that is rolled back, except RLS/role tests, which use their own connections).
+- pytest against a real PostgreSQL 17 (a dedicated database whose name must end in `_test`; migrated once per test session; all tables truncated by the owner role after each database test).
 - **Unit:** validators (including Verhoeff), maskers, AEAD round-trip, tamper detection (nonce, AAD, ciphertext, wrapped DEK), lookup-HMAC determinism, audit chain verification (edit, delete, reorder), policy decisions, API-key hashing.
 - **Property-based (Hypothesis):** encrypt/decrypt round-trip for arbitrary bytes; normalisation is idempotent.
 - **Integration (HTTP):** tokenize/detokenize across policy combinations; dedup; batch limits; erasure; export; DEK rotation plus re-encryption; master rotation; rate limiting; health/readiness.
