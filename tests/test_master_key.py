@@ -243,3 +243,33 @@ def test_out_of_range_kdf_parameters_are_rejected_without_running_the_kdf(
     path.write_text(json.dumps(doc), encoding="utf-8")  # inf is written as Infinity
     with pytest.raises(mk.MasterKeyError, match="malformed"):
         mk.load_file_master_key(path, PASSPHRASE)
+
+
+def test_unreadable_key_file_raises_master_key_error(tmp_path: Path) -> None:
+    directory = tmp_path / "not-a-file.key"
+    directory.mkdir()
+    with pytest.raises(mk.MasterKeyError, match="Cannot read"):
+        mk.load_file_master_key(directory, PASSPHRASE)
+
+
+def test_unreadable_key_file_gives_locked_provider(tmp_path: Path) -> None:
+    directory = tmp_path / "not-a-file.key"
+    directory.mkdir()
+    provider = mk.load_key_provider(
+        _settings(
+            master_key_store="file", master_key_file=directory, master_key_passphrase=PASSPHRASE
+        )
+    )
+    assert isinstance(provider, LockedKeyProvider)
+
+
+class ExplodingKeyring(MemoryKeyring):
+    def get_password(self, service: str, username: str) -> str | None:
+        raise RuntimeError("backend bug with secret-ish detail")
+
+
+def test_unexpected_keychain_errors_give_locked_provider_without_details() -> None:
+    keyring.set_keyring(ExplodingKeyring())
+    provider = mk.load_key_provider(_settings())
+    assert isinstance(provider, LockedKeyProvider)
+    assert provider.reason == "The master key could not be loaded."

@@ -147,7 +147,11 @@ def _bounded_int(value: Any, low: int, high: int) -> int:
 
 def _read_key_file(path: Path) -> tuple[str, bytes, KdfParams, bytes, bytes]:
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+    except OSError:  # a directory, no permission, unreadable share, ...
+        raise MasterKeyError(f"Cannot read master key file {path}.") from None
+    try:
+        doc = json.loads(raw)
         if doc.get("format") != FILE_FORMAT or doc.get("version") != 1:
             raise ValueError("unknown format")
         kdf = doc["kdf"]
@@ -200,3 +204,8 @@ def load_key_provider(settings: Settings) -> KeyProvider:
     except MasterKeyError as exc:
         log.warning("key_provider_locked", reason=str(exc))
         return LockedKeyProvider(str(exc))
+    except Exception as exc:
+        # Fail closed on anything unexpected (e.g. a keyring backend bug): start locked,
+        # and log only the error type since the message could contain sensitive detail.
+        log.error("key_provider_load_failed", error_type=type(exc).__name__)
+        return LockedKeyProvider("The master key could not be loaded.")
