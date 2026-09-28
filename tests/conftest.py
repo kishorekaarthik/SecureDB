@@ -1,3 +1,4 @@
+import secrets
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.pool import NullPool
 
 from securedb.config import Settings
+from securedb.crypto.local import LocalKeyProvider
 from securedb.db.session import Database
 from tests.helpers import is_test_database, truncate_all
 
@@ -78,3 +80,9 @@ def db(settings: Settings, clean_db: None) -> Iterator[Database]:
     database = Database(settings.database_url)
     yield database
     database.dispose()
+
+
+@pytest.fixture
+def key_provider() -> LocalKeyProvider:
+    """An unlocked provider with a random in-memory master key."""
+    return LocalKeyProvider(secrets.token_bytes(32), key_id="mk_test")
