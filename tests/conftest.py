@@ -9,6 +9,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.pool import NullPool
 
 from securedb.config import Settings
+from securedb.db.session import Database
 from tests.helpers import is_test_database, truncate_all
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,3 +71,10 @@ def app_engine(settings: Settings, clean_db: None) -> Iterator[Engine]:
     engine = create_engine(settings.database_url, poolclass=NullPool)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture
+def db(settings: Settings, clean_db: None) -> Iterator[Database]:
+    database = Database(settings.database_url)
+    yield database
+    database.dispose()
