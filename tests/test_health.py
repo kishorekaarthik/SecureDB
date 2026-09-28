@@ -2,11 +2,13 @@ from fastapi.testclient import TestClient
 
 from securedb.app import create_app
 from securedb.config import Settings
+from securedb.crypto.local import LocalKeyProvider
+from securedb.crypto.provider import KeyProvider
 from securedb.db.session import Database
 
 
-def _client(settings: Settings) -> TestClient:
-    return TestClient(create_app(settings, Database(settings.database_url)))
+def _client(settings: Settings, key_provider: KeyProvider | None = None) -> TestClient:
+    return TestClient(create_app(settings, Database(settings.database_url), key_provider))
 
 
 def test_healthz_is_ok_without_database(offline_settings: Settings) -> None:
@@ -15,10 +17,24 @@ def test_healthz_is_ok_without_database(offline_settings: Settings) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_readyz_ready_when_database_reachable(settings: Settings) -> None:
-    response = _client(settings).get("/readyz")
+def test_readyz_ready_when_database_reachable_and_vault_unlocked(
+    settings: Settings, key_provider: LocalKeyProvider
+) -> None:
+    response = _client(settings, key_provider).get("/readyz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "checks": {"database": True}}
+    assert response.json() == {
+        "status": "ready",
+        "checks": {"database": True, "key_provider": True},
+    }
+
+
+def test_readyz_not_ready_when_vault_locked(settings: Settings) -> None:
+    response = _client(settings).get("/readyz")  # empty keychain -> locked provider
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": {"database": True, "key_provider": False},
+    }
 
 
 def test_app_starts_and_reports_not_ready_when_database_down(
@@ -28,7 +44,10 @@ def test_app_starts_and_reports_not_ready_when_database_down(
     assert client.get("/healthz").status_code == 200
     response = client.get("/readyz")
     assert response.status_code == 503
-    assert response.json() == {"status": "not_ready", "checks": {"database": False}}
+    assert response.json() == {
+        "status": "not_ready",
+        "checks": {"database": False, "key_provider": False},
+    }
 
 
 def test_readyz_treats_raising_check_as_not_ready(offline_settings: Settings) -> None:
