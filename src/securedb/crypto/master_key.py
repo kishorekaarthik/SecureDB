@@ -23,6 +23,10 @@ KEYCHAIN_SERVICE = "securedb-vault"
 KEYCHAIN_USERNAME = "master-key"
 FILE_FORMAT = "securedb-master-key"
 MIN_PASSPHRASE_LENGTH = 12
+# Upper bounds accepted when reading a key file (defaults are 3 / 64 MiB / 4).
+MAX_TIME_COST = 10
+MAX_MEMORY_COST = 1_048_576  # KiB (1 GiB)
+MAX_PARALLELISM = 16
 
 log = structlog.get_logger(__name__)
 
@@ -134,6 +138,13 @@ def init_file_master_key(path: Path, passphrase: str, params: KdfParams | None =
     return key_id
 
 
+def _bounded_int(value: Any, low: int, high: int) -> int:
+    # type() check rejects bool (an int subclass) and floats such as Infinity.
+    if type(value) is not int or not low <= value <= high:
+        raise ValueError("KDF parameter out of range")
+    return value
+
+
 def _read_key_file(path: Path) -> tuple[str, bytes, KdfParams, bytes, bytes]:
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -142,10 +153,13 @@ def _read_key_file(path: Path) -> tuple[str, bytes, KdfParams, bytes, bytes]:
         kdf = doc["kdf"]
         if kdf["name"] != "argon2id":
             raise ValueError("unknown kdf")
+        # The file is attacker-writable input: bound the costs before running the KDF,
+        # so a tampered file cannot crash (OverflowError) or hang/OOM startup.
+        parallelism = _bounded_int(kdf["parallelism"], 1, MAX_PARALLELISM)
         params = KdfParams(
-            time_cost=int(kdf["time_cost"]),
-            memory_cost=int(kdf["memory_cost"]),
-            parallelism=int(kdf["parallelism"]),
+            time_cost=_bounded_int(kdf["time_cost"], 1, MAX_TIME_COST),
+            memory_cost=_bounded_int(kdf["memory_cost"], 8 * parallelism, MAX_MEMORY_COST),
+            parallelism=parallelism,
         )
         return (
             str(doc["key_id"]),

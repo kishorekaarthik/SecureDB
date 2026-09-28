@@ -214,3 +214,32 @@ def test_unavailable_keychain_gives_locked_provider() -> None:
     provider = mk.load_key_provider(_settings())
     assert isinstance(provider, LockedKeyProvider)
     assert "keychain" in provider.reason
+
+
+@pytest.mark.parametrize(
+    ("param", "value"),
+    [
+        ("time_cost", -1),
+        ("time_cost", 0),
+        ("time_cost", 2**33),
+        ("time_cost", 4_000_000_000),
+        ("time_cost", 2.5),
+        ("time_cost", True),
+        ("memory_cost", float("inf")),
+        ("memory_cost", 2**40),
+        ("memory_cost", 4),
+        ("parallelism", -5),
+        ("parallelism", 0),
+        ("parallelism", 1024),
+    ],
+)
+def test_out_of_range_kdf_parameters_are_rejected_without_running_the_kdf(
+    tmp_path: Path, param: str, value: object
+) -> None:
+    path = tmp_path / "master.key"
+    mk.init_file_master_key(path, PASSPHRASE, FAST)
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["kdf"][param] = value
+    path.write_text(json.dumps(doc), encoding="utf-8")  # inf is written as Infinity
+    with pytest.raises(mk.MasterKeyError, match="malformed"):
+        mk.load_file_master_key(path, PASSPHRASE)
