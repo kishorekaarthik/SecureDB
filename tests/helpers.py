@@ -1,5 +1,6 @@
-"""Test-only helpers for database safety and cleanup."""
+"""Test-only helpers: database safety and cleanup, in-memory OS keychain."""
 
+from keyring.backend import KeyringBackend
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
@@ -28,3 +29,22 @@ def truncate_all(owner_url: str) -> None:
                 conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
     finally:
         engine.dispose()
+
+
+class MemoryKeyring(KeyringBackend):
+    """In-memory keyring so tests never touch the real OS keychain."""
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entries: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.entries.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.entries[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        self.entries.pop((service, username), None)
