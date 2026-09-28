@@ -9,7 +9,7 @@ from securedb import __version__
 from securedb.api import health
 from securedb.config import Settings, get_settings
 from securedb.db.session import Database
-from securedb.errors import install_error_handlers
+from securedb.errors import UnhandledErrorMiddleware, install_error_handlers
 from securedb.logs import configure_logging
 from securedb.middleware import RequestIdMiddleware
 
@@ -37,6 +37,8 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     app.state.db = db
     app.state.readiness_checks = readiness_checks
 
+    # Added first = innermost: errors are caught inside RequestIdMiddleware.
+    app.add_middleware(UnhandledErrorMiddleware)
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
     app.include_router(health.router)

@@ -1,5 +1,6 @@
 """Domain errors and RFC 7807 problem+json responses."""
 
+import traceback
 from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any, ClassVar, cast
@@ -8,7 +9,9 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 PROBLEM_JSON = "application/problem+json"
 
@@ -95,10 +98,55 @@ async def _handle_validation_error(request: Request, exc: Exception) -> JSONResp
 
 async def _handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
     request_id = get_request_id(request)
-    log.error("unhandled_error", request_id=request_id, exc_info=exc)
+    if isinstance(exc, SQLAlchemyError):
+        # Database error messages embed row values (e.g. "Key (name)=(...)"), so log
+        # only the error class, SQLSTATE and the stack frames, never the message.
+        log.error(
+            "unhandled_error",
+            request_id=request_id,
+            error_type=type(exc).__name__,
+            sqlstate=getattr(getattr(exc, "orig", None), "sqlstate", None),
+            stack="".join(traceback.format_tb(exc.__traceback__)),
+        )
+    else:
+        log.error("unhandled_error", request_id=request_id, exc_info=exc)
     return problem_response(
         500, "Internal Server Error", "An unexpected error occurred.", request_id
     )
+
+
+class UnhandledErrorMiddleware:
+    """Turns unexpected exceptions into a 500 problem response inside the app.
+
+    Starlette's outermost ServerErrorMiddleware re-raises after responding, so the
+    server would log the raw, unredacted traceback a second time. Catching here
+    means exceptions never reach the server, and the response still passes through
+    RequestIdMiddleware (so it gets an X-Request-ID header).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        response_started = False
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, tracking_send)
+        except Exception as exc:
+            if response_started:  # too late to send a clean 500
+                raise
+            response = await _handle_unexpected(Request(scope), exc)
+            await response(scope, receive, send)
 
 
 def install_error_handlers(app: FastAPI) -> None:

@@ -99,3 +99,12 @@ def test_unhandled_error_is_generic_and_secret_free(
     assert "unhandled_error" in logs
     assert body["request_id"] in logs
     assert "SeCrEt99" not in logs
+
+
+def test_unhandled_errors_do_not_reach_the_server(app: FastAPI) -> None:
+    # Starlette's ServerErrorMiddleware re-raises after responding, which makes the
+    # server log the raw traceback (unredacted). Errors must be fully handled inside.
+    response = TestClient(app).get("/raise/crash")  # raise_server_exceptions=True
+    assert response.status_code == 500
+    assert re.fullmatch(r"[0-9a-f]{32}", response.headers["X-Request-ID"])
+    assert response.json()["request_id"] == response.headers["X-Request-ID"]

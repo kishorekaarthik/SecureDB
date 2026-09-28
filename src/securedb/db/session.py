@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session, sessionmaker
 class Database:
     def __init__(self, url: str, *, pool_size: int = 5, max_overflow: int = 10) -> None:
         self.engine: Engine = create_engine(
-            url, pool_pre_ping=True, pool_size=pool_size, max_overflow=max_overflow
+            url,
+            pool_pre_ping=True,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            hide_parameters=True,  # keep bound values (PII) out of exception text
         )
         self._sessions = sessionmaker(self.engine, expire_on_commit=False)
 
