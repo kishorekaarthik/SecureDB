@@ -37,6 +37,18 @@ class Unauthorized(DomainError):
     title = "Unauthorized"
 
 
+class CryptoError(DomainError):
+    """Decryption or unwrapping failed. Deliberately says nothing about why."""
+
+    status_code = 500
+    title = "Internal Server Error"
+
+
+class KeyProviderLocked(DomainError):
+    status_code = 503
+    title = "Service Unavailable"
+
+
 def get_request_id(request: Request) -> str:
     state = request.scope.get("state") or {}
     request_id = state.get("request_id")

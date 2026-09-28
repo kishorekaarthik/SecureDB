@@ -11,7 +11,18 @@ from structlog.typing import EventDict, Processor, WrappedLogger
 
 REDACTED = "[REDACTED]"
 SENSITIVE_KEYS = frozenset(
-    {"value", "values", "secret", "password", "totp", "authorization", "api_key"}
+    {
+        "value",
+        "values",
+        "secret",
+        "password",
+        "passphrase",
+        "master_key",
+        "master_key_passphrase",
+        "totp",
+        "authorization",
+        "api_key",
+    }
 )
 _API_KEY_PATTERN = re.compile(r"sdb_(?:live|test)_[A-Za-z0-9]+_[A-Za-z0-9]+")
 

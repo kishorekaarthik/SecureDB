@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "alembic>=1.13",
+    "cryptography>=44",
     "fastapi>=0.115",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.8",
@@ -23,6 +24,7 @@ securedb = "securedb.cli:app"
 dev = [
     "bandit>=1.7.9",
     "httpx2>=2.13.1",
+    "hypothesis>=6.100",
     "mypy>=1.11",
     "pip-audit>=2.7",
     "pytest>=8.2",
