@@ -854,7 +854,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "sqlalchemy", specifier = ">=2.0.30" },
