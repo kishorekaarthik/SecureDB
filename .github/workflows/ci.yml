@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      SECUREDB_ENV: test
+      SECUREDB_DATABASE_URL: postgresql+psycopg://securedb_app:ci-app-pw@localhost:5432/securedb_test
+      SECUREDB_MIGRATION_DATABASE_URL: postgresql+psycopg://securedb_owner:ci-owner-pw@localhost:5432/securedb_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python and dependencies
+        run: |
+          uv python install 3.13
+          uv sync --frozen
+      - name: Bootstrap database roles
+        run: >-
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1
+          -v owner_pw=ci-owner-pw -v app_pw=ci-app-pw
+          -f scripts/bootstrap_db.sql
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Type check
+        run: uv run mypy
+      - name: Test
+        run: uv run pytest --cov --cov-report=term-missing
+      - name: Security lint
+        run: uv run python -m bandit -q -r src
+      - name: Dependency audit
+        run: uv run python -m pip_audit --skip-editable
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
