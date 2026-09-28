@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from securedb import __version__
+from securedb.api import health
 from securedb.config import Settings, get_settings
 from securedb.db.session import Database
 from securedb.errors import install_error_handlers
@@ -38,4 +39,5 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
+    app.include_router(health.router)
     return app
