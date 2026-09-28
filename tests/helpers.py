@@ -7,6 +7,10 @@ from sqlalchemy import Connection, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
+from securedb.crypto.tenant_keys import KeyRing
+from securedb.db.models import Tenant
+from securedb.db.session import Database
+
 
 def is_test_database(url: str) -> bool:
     return (make_url(url).database or "").endswith("_test")
@@ -58,3 +62,12 @@ def set_tenant(conn: Connection, tenant_id: uuid.UUID) -> None:
         text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
         {"tenant_id": str(tenant_id)},
     )
+
+
+def create_tenant_with_keys(db: Database, keyring: KeyRing, name: str) -> uuid.UUID:
+    tenant_id = uuid.uuid4()
+    with db.session() as session:
+        session.add(Tenant(id=tenant_id, name=name))
+    with db.tenant_session(tenant_id) as session:
+        keyring.create_tenant_keys(session, tenant_id)
+    return tenant_id
