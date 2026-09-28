@@ -1,6 +1,8 @@
+import secrets
 from collections.abc import Iterator
 from pathlib import Path
 
+import keyring
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -9,8 +11,9 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.pool import NullPool
 
 from securedb.config import Settings
+from securedb.crypto.local import LocalKeyProvider
 from securedb.db.session import Database
-from tests.helpers import is_test_database, truncate_all
+from tests.helpers import MemoryKeyring, is_test_database, truncate_all
 
 ROOT = Path(__file__).resolve().parents[1]
 OFFLINE_URL = "postgresql+psycopg://nobody:nopass@127.0.0.1:1/offline_test?connect_timeout=1"
@@ -78,3 +81,19 @@ def db(settings: Settings, clean_db: None) -> Iterator[Database]:
     database = Database(settings.database_url)
     yield database
     database.dispose()
+
+
+@pytest.fixture
+def key_provider() -> LocalKeyProvider:
+    """An unlocked provider with a random in-memory master key."""
+    return LocalKeyProvider(secrets.token_bytes(32), key_id="mk_test")
+
+
+@pytest.fixture(autouse=True)
+def memory_keyring() -> Iterator[MemoryKeyring]:
+    """Every test gets an empty in-memory OS keychain."""
+    previous = keyring.get_keyring()
+    backend = MemoryKeyring()
+    keyring.set_keyring(backend)
+    yield backend
+    keyring.set_keyring(previous)

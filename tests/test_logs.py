@@ -63,3 +63,13 @@ def test_stdlib_tracebacks_are_json_and_redacted(capsys: pytest.CaptureFixture[s
     assert record["level"] == "error"
     assert "RuntimeError" in record["exception"]
     assert "SeCrEt99" not in out
+
+
+def test_passphrases_and_master_keys_are_redacted() -> None:
+    out = _run({"event": "x", "passphrase": "p", "master_key": "k", "Master_Key_Passphrase": "q"})
+    assert out == {
+        "event": "x",
+        "passphrase": REDACTED,
+        "master_key": REDACTED,
+        "Master_Key_Passphrase": REDACTED,
+    }
