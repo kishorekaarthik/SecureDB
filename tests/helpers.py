@@ -1,7 +1,9 @@
 """Test-only helpers: database safety and cleanup, in-memory OS keychain."""
 
+import uuid
+
 from keyring.backend import KeyringBackend
-from sqlalchemy import create_engine, text
+from sqlalchemy import Connection, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
@@ -48,3 +50,11 @@ class MemoryKeyring(KeyringBackend):
 
     def delete_password(self, service: str, username: str) -> None:
         self.entries.pop((service, username), None)
+
+
+def set_tenant(conn: Connection, tenant_id: uuid.UUID) -> None:
+    """Set app.tenant_id for the current transaction (what RLS policies read)."""
+    conn.execute(
+        text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+        {"tenant_id": str(tenant_id)},
+    )
