@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from securedb.app import create_app
-from securedb.audit.log import AuditRecord, list_entries, verify
+from securedb.audit.log import Actor, AuditRecord, list_entries, verify
 from securedb.config import Settings
 from securedb.crypto.local import LocalKeyProvider
 from securedb.db.session import Database
@@ -23,7 +23,7 @@ def app_and_tenant(
     settings: Settings, key_provider: LocalKeyProvider, clean_db: None
 ) -> Iterator[tuple[TestClient, Database, uuid.UUID]]:
     app = create_app(settings, Database(settings.database_url), key_provider)
-    tenant = create_tenant(app.state.db, app.state.keyring, "acme")
+    tenant = create_tenant(app.state.db, app.state.keyring, "acme", actor=Actor.system("test"))
     yield TestClient(app), app.state.db, tenant
     app.state.db.dispose()
 
@@ -36,10 +36,16 @@ def _entries(db: Database, tenant: uuid.UUID) -> list[AuditRecord]:
 def _key(db: Database, tenant: uuid.UUID, *policies: tuple[FieldType, Action, Effect]) -> str:
     with db.tenant_session(tenant) as session:
         issued = issue_api_key(
-            session, tenant, "svc", [Scope.tokenize, Scope.detokenize, Scope.subjects_erase]
+            session,
+            tenant,
+            "svc",
+            [Scope.tokenize, Scope.detokenize, Scope.subjects_erase],
+            actor=Actor.system("test"),
         )
         for field_type, action, effect in policies:
-            set_policy(session, tenant, issued.id, field_type, action, effect)
+            set_policy(
+                session, tenant, issued.id, field_type, action, effect, actor=Actor.system("test")
+            )
     return issued.plaintext
 
 
@@ -79,8 +85,8 @@ def test_key_and_policy_changes_are_audited_without_secrets(
 def test_revocation_is_audited(app_and_tenant: tuple[TestClient, Database, uuid.UUID]) -> None:
     _, db, tenant = app_and_tenant
     with db.tenant_session(tenant) as session:
-        issued = issue_api_key(session, tenant, "svc", [Scope.tokenize])
-        revoke_api_key(session, issued.id)
+        issued = issue_api_key(session, tenant, "svc", [Scope.tokenize], actor=Actor.system("test"))
+        revoke_api_key(session, issued.id, actor=Actor.system("test"))
     last = _entries(db, tenant)[-1]
     assert (last.action, last.outcome) == ("api_key.revoke", {"key_id": str(issued.id)})
 

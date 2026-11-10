@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from securedb.app import create_app
+from securedb.audit.log import Actor
 from securedb.config import Settings
 from securedb.crypto.local import LocalKeyProvider
 from securedb.db.session import Database
@@ -23,15 +24,23 @@ def ctx(
     settings: Settings, key_provider: LocalKeyProvider, clean_db: None
 ) -> Iterator[tuple[TestClient, Database, uuid.UUID]]:
     app = create_app(settings, Database(settings.database_url), key_provider)
-    tenant = create_tenant(app.state.db, app.state.keyring, "acme")
+    tenant = create_tenant(app.state.db, app.state.keyring, "acme", actor=Actor.system("test"))
     yield TestClient(app), app.state.db, tenant
     app.state.db.dispose()
 
 
 def _key(db: Database, tenant: uuid.UUID, *scopes: Scope) -> dict[str, str]:
     with db.tenant_session(tenant) as session:
-        issued = issue_api_key(session, tenant, "svc", scopes)
-        set_policy(session, tenant, issued.id, FieldType.pan, Action.tokenize, Effect.allow)
+        issued = issue_api_key(session, tenant, "svc", scopes, actor=Actor.system("test"))
+        set_policy(
+            session,
+            tenant,
+            issued.id,
+            FieldType.pan,
+            Action.tokenize,
+            Effect.allow,
+            actor=Actor.system("test"),
+        )
     return {"Authorization": f"Bearer {issued.plaintext}"}
 
 

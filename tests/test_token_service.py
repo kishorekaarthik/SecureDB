@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import pytest
 from sqlalchemy import func, select
 
+from securedb.audit.log import Actor
 from securedb.crypto.local import LocalKeyProvider
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import Token, TokenSubject
@@ -33,9 +34,13 @@ def _key_with_policies(
     db: Database, tenant: uuid.UUID, policies: dict[tuple[FieldType, Action], Effect]
 ) -> AuthenticatedKey:
     with db.tenant_session(tenant) as session:
-        issued = issue_api_key(session, tenant, "svc", [Scope.tokenize, Scope.detokenize])
+        issued = issue_api_key(
+            session, tenant, "svc", [Scope.tokenize, Scope.detokenize], actor=Actor.system("test")
+        )
         for (field_type, action), effect in policies.items():
-            set_policy(session, tenant, issued.id, field_type, action, effect)
+            set_policy(
+                session, tenant, issued.id, field_type, action, effect, actor=Actor.system("test")
+            )
     return AuthenticatedKey(issued.id, tenant, frozenset({"tokenize", "detokenize"}))
 
 
@@ -51,7 +56,7 @@ STANDARD_POLICIES = {
 @pytest.fixture
 def world(db: Database, key_provider: LocalKeyProvider) -> World:
     keyring = KeyRing(key_provider)
-    tenant = create_tenant(db, keyring, "acme")
+    tenant = create_tenant(db, keyring, "acme", actor=Actor.system("test"))
     return World(TokenService(keyring), tenant, _key_with_policies(db, tenant, STANDARD_POLICIES))
 
 
@@ -122,7 +127,7 @@ def test_other_tenants_cannot_detokenize(
     db: Database, world: World, key_provider: LocalKeyProvider
 ) -> None:
     [pan] = _tokenize(db, world, TokenizeItem(FieldType.pan, PAN))
-    other_tenant = create_tenant(db, KeyRing(key_provider), "globex")
+    other_tenant = create_tenant(db, KeyRing(key_provider), "globex", actor=Actor.system("test"))
     other_key = _key_with_policies(db, other_tenant, STANDARD_POLICIES)
     [result] = _detokenize(db, world, pan, key=other_key)
     assert result.error == NOT_AVAILABLE

@@ -69,7 +69,8 @@ def issue_api_key(
     tenant_id: uuid.UUID,
     name: str,
     scopes: Iterable[Scope],
-    actor: Actor | None = None,
+    *,
+    actor: Actor,
 ) -> IssuedKey:
     """Create a key. Call in the tenant's session; the plaintext is returned only here."""
     prefix, secret = _random(PREFIX_LENGTH), _random(SECRET_LENGTH)
@@ -85,7 +86,7 @@ def issue_api_key(
     append(
         session,
         tenant_id,
-        actor or Actor.system("cli"),
+        actor,
         "api_key.create",
         outcome={"key_id": str(key.id), "prefix": prefix, "name": name, "scopes": key.scopes},
     )
@@ -120,7 +121,7 @@ def authenticate(db: Database, authorization: str | None) -> AuthenticatedKey:
     return AuthenticatedKey(id=row.id, tenant_id=row.tenant_id, scopes=frozenset(row.scopes))
 
 
-def revoke_api_key(session: Session, key_id: uuid.UUID, actor: Actor | None = None) -> None:
+def revoke_api_key(session: Session, key_id: uuid.UUID, *, actor: Actor) -> None:
     """Revoke a key. Call in the owning tenant's session (others get NotFound)."""
     tenant_id = session.scalar(
         update(ApiKey)
@@ -133,7 +134,7 @@ def revoke_api_key(session: Session, key_id: uuid.UUID, actor: Actor | None = No
     append(
         session,
         tenant_id,
-        actor or Actor.system("cli"),
+        actor,
         "api_key.revoke",
         outcome={"key_id": str(key_id)},
     )

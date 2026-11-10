@@ -12,7 +12,7 @@ import uvicorn
 from sqlalchemy import select
 
 from securedb import __version__
-from securedb.audit.log import verify
+from securedb.audit.log import Actor, verify
 from securedb.config import get_settings
 from securedb.crypto.master_key import (
     MasterKeyError,
@@ -74,7 +74,7 @@ def create_tenant_command(name: Annotated[str, typer.Argument(help="Tenant name.
     def run(db: Database, provider: KeyProvider) -> None:
         if not provider.is_unlocked():
             raise KeyProviderLocked(getattr(provider, "reason", "The vault is locked."))
-        tenant_id = create_tenant(db, KeyRing(provider), name)
+        tenant_id = create_tenant(db, KeyRing(provider), name, actor=Actor.system("cli"))
         typer.echo(f"Created tenant {name} ({tenant_id}).")
 
     _with_database(run)
@@ -91,7 +91,7 @@ def create_api_key_command(
     def run(db: Database, _provider: KeyProvider) -> None:
         tenant_id = find_tenant_id(db, tenant)
         with db.tenant_session(tenant_id) as session:
-            issued = issue_api_key(session, tenant_id, name, scope)
+            issued = issue_api_key(session, tenant_id, name, scope, actor=Actor.system("cli"))
         typer.echo(f"API key (shown once): {issued.plaintext}")
         typer.echo(f"Prefix: {issued.prefix}")
 
@@ -108,7 +108,7 @@ def revoke_api_key_command(
         tenant_id = find_tenant_id(db, tenant)
         key_id = _key_id(db, tenant_id, prefix)
         with db.tenant_session(tenant_id) as session:
-            revoke_api_key(session, key_id)
+            revoke_api_key(session, key_id, actor=Actor.system("cli"))
         typer.echo(f"Revoked API key {prefix}.")
 
     _with_database(run)
@@ -128,7 +128,9 @@ def set_policy_command(
         tenant_id = find_tenant_id(db, tenant)
         key_id = _key_id(db, tenant_id, key)
         with db.tenant_session(tenant_id) as session:
-            set_policy(session, tenant_id, key_id, field_type, action, effect)
+            set_policy(
+                session, tenant_id, key_id, field_type, action, effect, actor=Actor.system("cli")
+            )
         typer.echo(f"Policy set: {key} {action.value} {field_type.value} -> {effect.value}.")
 
     _with_database(run)

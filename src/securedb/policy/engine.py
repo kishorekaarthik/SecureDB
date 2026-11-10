@@ -31,7 +31,8 @@ def set_policy(
     field_type: FieldType,
     action: Action,
     effect: Effect,
-    actor: Actor | None = None,
+    *,
+    actor: Actor,
 ) -> None:
     """Grant, change or (with Effect.deny) remove a policy. Call in the tenant's session."""
     if session.get(ApiKey, api_key_id) is None:  # RLS hides other tenants' keys
@@ -46,7 +47,7 @@ def set_policy(
     append(
         session,
         tenant_id,
-        actor or Actor.system("cli"),
+        actor,
         "policy.set",
         outcome={
             "key_id": str(api_key_id),

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from securedb.app import create_app
+from securedb.audit.log import Actor
 from securedb.config import Settings
 from securedb.crypto.local import LocalKeyProvider
 from securedb.db.models import ApiKey
@@ -30,9 +31,17 @@ class Api:
     def key(self, *scopes: Scope, policies: dict[tuple[FieldType, Action], Effect]) -> str:
         db: Database = self.app.state.db
         with db.tenant_session(self.tenant) as session:  # type: ignore[arg-type]
-            issued = issue_api_key(session, self.tenant, "svc", scopes)  # type: ignore[arg-type]
+            issued = issue_api_key(session, self.tenant, "svc", scopes, actor=Actor.system("test"))  # type: ignore[arg-type]
             for (field_type, action), effect in policies.items():
-                set_policy(session, self.tenant, issued.id, field_type, action, effect)  # type: ignore[arg-type]
+                set_policy(
+                    session,
+                    self.tenant,
+                    issued.id,
+                    field_type,
+                    action,
+                    effect,
+                    actor=Actor.system("test"),
+                )  # type: ignore[arg-type]
         return issued.plaintext
 
 
@@ -48,7 +57,7 @@ ALL_SCOPES = (Scope.tokenize, Scope.detokenize, Scope.subjects_erase)
 def _make(settings: Settings, provider: LocalKeyProvider, rate_limit: int) -> Api:
     tuned = settings.model_copy(update={"rate_limit_per_minute": rate_limit})
     app = create_app(tuned, Database(settings.database_url), provider)
-    tenant = create_tenant(app.state.db, app.state.keyring, "acme")
+    tenant = create_tenant(app.state.db, app.state.keyring, "acme", actor=Actor.system("test"))
     return Api(app, TestClient(app), tenant)
 
 
@@ -120,7 +129,7 @@ def test_revoked_key_is_401(api: Api) -> None:
     with db.tenant_session(api.tenant) as session:  # type: ignore[arg-type]
         key_id = session.scalar(select(ApiKey.id).where(ApiKey.prefix == prefix))
         assert key_id is not None
-        revoke_api_key(session, key_id)
+        revoke_api_key(session, key_id, actor=Actor.system("test"))
     response = api.client.post(
         "/v1/tokens", json={"items": [{"type": "pan", "value": PAN}]}, headers=_auth(key)
     )

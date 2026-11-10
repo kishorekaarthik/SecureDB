@@ -12,9 +12,7 @@ from securedb.db.session import Database
 from securedb.errors import Conflict, NotFound
 
 
-def create_tenant(
-    db: Database, keyring: KeyRing, name: str, actor: Actor | None = None
-) -> uuid.UUID:
+def create_tenant(db: Database, keyring: KeyRing, name: str, *, actor: Actor) -> uuid.UUID:
     """Create a tenant and its keys in one transaction (all or nothing)."""
     name = name.strip()
     if not name:
@@ -28,7 +26,7 @@ def create_tenant(
             append(
                 session,
                 tenant_id,
-                actor or Actor.system("cli"),
+                actor,
                 "tenant.create",
                 outcome={"name": name},
             )

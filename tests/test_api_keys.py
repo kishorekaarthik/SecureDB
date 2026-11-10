@@ -3,6 +3,7 @@ import uuid
 import pytest
 from sqlalchemy import Engine, text
 
+from securedb.audit.log import Actor
 from securedb.crypto.local import LocalKeyProvider
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import ApiKey
@@ -26,7 +27,13 @@ def tenant(db: Database, key_provider: LocalKeyProvider) -> uuid.UUID:
 
 def _issue(db: Database, tenant_id: uuid.UUID, *scopes: Scope) -> IssuedKey:
     with db.tenant_session(tenant_id) as session:
-        return issue_api_key(session, tenant_id, "billing-service", scopes or (Scope.tokenize,))
+        return issue_api_key(
+            session,
+            tenant_id,
+            "billing-service",
+            scopes or (Scope.tokenize,),
+            actor=Actor.system("test"),
+        )
 
 
 def test_issue_then_authenticate(db: Database, tenant: uuid.UUID) -> None:
@@ -92,7 +99,7 @@ def test_bad_credentials_are_rejected_identically(
 def test_revoked_keys_are_rejected(db: Database, tenant: uuid.UUID) -> None:
     issued = _issue(db, tenant)
     with db.tenant_session(tenant) as session:
-        revoke_api_key(session, issued.id)
+        revoke_api_key(session, issued.id, actor=Actor.system("test"))
     with pytest.raises(Unauthorized):
         authenticate(db, f"Bearer {issued.plaintext}")
 
@@ -103,7 +110,7 @@ def test_cannot_revoke_another_tenants_key(
     other = create_tenant_with_keys(db, KeyRing(key_provider), "globex")
     issued = _issue(db, tenant)
     with db.tenant_session(other) as session, pytest.raises(NotFound):
-        revoke_api_key(session, issued.id)
+        revoke_api_key(session, issued.id, actor=Actor.system("test"))
     assert authenticate(db, f"Bearer {issued.plaintext}").tenant_id == tenant
 
 
