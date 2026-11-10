@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from securedb.api.auth import require
+from securedb.audit.log import Actor, append
 from securedb.db.session import Database
+from securedb.errors import Forbidden, UnprocessableEntity
 from securedb.tenants.api_keys import AuthenticatedKey, Scope
 from securedb.vault.fields import FieldType
 from securedb.vault.service import TokenizeItem, TokenService
@@ -84,8 +86,22 @@ def tokenize(
         )
         for item in body.items
     ]
-    with _db(request).tenant_session(key.tenant_id) as session:
-        results = _service(request).tokenize(session, key, items)
+    db = _db(request)
+    try:
+        with db.tenant_session(key.tenant_id) as session:
+            results = _service(request).tokenize(session, key, items)
+    except (Forbidden, UnprocessableEntity) as exc:
+        # The operation rolled back; record the rejection in its own transaction.
+        reason = "forbidden" if isinstance(exc, Forbidden) else "invalid"
+        with db.tenant_session(key.tenant_id) as session:
+            append(
+                session,
+                key.tenant_id,
+                Actor.api_key(key.id),
+                "tokenize.rejected",
+                outcome={"reason": reason, "items": len(items)},
+            )
+        raise
     return TokenizeResponse(
         items=[TokenizeItemOut(token=r.token, type=r.type, created=r.created) for r in results]
     )
@@ -114,5 +130,5 @@ def delete_token(
     key: Annotated[AuthenticatedKey, Depends(require(Scope.subjects_erase))],
 ) -> Response:
     with _db(request).tenant_session(key.tenant_id) as session:
-        _service(request).delete_token(session, token)
+        _service(request).delete_token(session, key, token)
     return Response(status_code=204)

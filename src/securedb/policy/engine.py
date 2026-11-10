@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from securedb.audit.log import Actor, append
 from securedb.db.models import ApiKey, Policy
 from securedb.errors import NotFound
 from securedb.vault.fields import FieldType
@@ -30,6 +31,7 @@ def set_policy(
     field_type: FieldType,
     action: Action,
     effect: Effect,
+    actor: Actor | None = None,
 ) -> None:
     """Grant, change or (with Effect.deny) remove a policy. Call in the tenant's session."""
     if session.get(ApiKey, api_key_id) is None:  # RLS hides other tenants' keys
@@ -39,11 +41,23 @@ def set_policy(
         Policy.field_type == field_type.value,
         Policy.action == action.value,
     )
+    if action is Action.tokenize and effect not in (Effect.allow, Effect.deny):
+        raise ValueError("Tokenize policies can only allow.")
+    append(
+        session,
+        tenant_id,
+        actor or Actor.system("cli"),
+        "policy.set",
+        outcome={
+            "key_id": str(api_key_id),
+            "field_type": field_type.value,
+            "action": action.value,
+            "effect": effect.value,
+        },
+    )
     if effect is Effect.deny:
         session.execute(delete(Policy).where(*match_row))
         return
-    if action is Action.tokenize and effect is not Effect.allow:
-        raise ValueError("Tokenize policies can only allow.")
     statement = insert(Policy).values(
         tenant_id=tenant_id,
         api_key_id=api_key_id,

@@ -18,6 +18,7 @@ from enum import StrEnum
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
+from securedb.audit.log import Actor, append
 from securedb.db.models import ApiKey
 from securedb.db.session import Database
 from securedb.errors import NotFound, Unauthorized
@@ -64,7 +65,11 @@ def _hash(secret: str) -> bytes:
 
 
 def issue_api_key(
-    session: Session, tenant_id: uuid.UUID, name: str, scopes: Iterable[Scope]
+    session: Session,
+    tenant_id: uuid.UUID,
+    name: str,
+    scopes: Iterable[Scope],
+    actor: Actor | None = None,
 ) -> IssuedKey:
     """Create a key. Call in the tenant's session; the plaintext is returned only here."""
     prefix, secret = _random(PREFIX_LENGTH), _random(SECRET_LENGTH)
@@ -77,6 +82,13 @@ def issue_api_key(
     )
     session.add(key)
     session.flush()
+    append(
+        session,
+        tenant_id,
+        actor or Actor.system("cli"),
+        "api_key.create",
+        outcome={"key_id": str(key.id), "prefix": prefix, "name": name, "scopes": key.scopes},
+    )
     return IssuedKey(id=key.id, prefix=prefix, plaintext=f"sdb_live_{prefix}_{secret}")
 
 
@@ -108,12 +120,20 @@ def authenticate(db: Database, authorization: str | None) -> AuthenticatedKey:
     return AuthenticatedKey(id=row.id, tenant_id=row.tenant_id, scopes=frozenset(row.scopes))
 
 
-def revoke_api_key(session: Session, key_id: uuid.UUID) -> None:
+def revoke_api_key(session: Session, key_id: uuid.UUID, actor: Actor | None = None) -> None:
     """Revoke a key. Call in the owning tenant's session (others get NotFound)."""
-    result = session.execute(
+    tenant_id = session.scalar(
         update(ApiKey)
         .where(ApiKey.id == key_id, ApiKey.revoked_at.is_(None))
         .values(revoked_at=func.now())
+        .returning(ApiKey.tenant_id)
     )
-    if result.rowcount == 0:  # type: ignore[attr-defined]
+    if tenant_id is None:
         raise NotFound("API key not found.")
+    append(
+        session,
+        tenant_id,
+        actor or Actor.system("cli"),
+        "api_key.revoke",
+        outcome={"key_id": str(key_id)},
+    )

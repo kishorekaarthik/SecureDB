@@ -179,17 +179,17 @@ def test_one_value_can_belong_to_several_subjects(db: Database, world: World) ->
 def test_deleting_a_token_removes_its_subject_links(db: Database, world: World) -> None:
     [token] = _tokenize(db, world, TokenizeItem(FieldType.pan, PAN, subject_id="cust-1"))
     with db.tenant_session(world.tenant) as session:
-        world.service.delete_token(session, token)
+        world.service.delete_token(session, world.key, token)
     assert _subjects(db, world, token) == []
 
 
 def test_delete_token(db: Database, world: World) -> None:
     [pan] = _tokenize(db, world, TokenizeItem(FieldType.pan, PAN))
     with db.tenant_session(world.tenant) as session:
-        world.service.delete_token(session, pan)
+        world.service.delete_token(session, world.key, pan)
     assert _detokenize(db, world, pan)[0].error == NOT_AVAILABLE
     with db.tenant_session(world.tenant) as session, pytest.raises(NotFound):
-        world.service.delete_token(session, pan)
+        world.service.delete_token(session, world.key, pan)
 
 
 def test_concurrent_tokenization_of_one_value_yields_one_token(db: Database, world: World) -> None:

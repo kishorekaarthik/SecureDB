@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from securedb.audit.log import Actor, append
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.crypto.values import EncryptedValue, ValueCipher
 from securedb.db.models import Token, TokenSubject
@@ -108,7 +109,20 @@ class TokenService:
                     .on_conflict_do_nothing()
                 )
             results[index] = result
-        return [results[index] for index in range(len(items))]
+        ordered = [results[index] for index in range(len(items))]
+        append(
+            session,
+            key.tenant_id,
+            Actor.api_key(key.id),
+            "tokenize",
+            token_ids=[r.token for r in ordered],
+            outcome={
+                "items": len(ordered),
+                "created": sum(r.created for r in ordered),
+                "types": sorted({r.type.value for r in ordered}),
+            },
+        )
+        return ordered
 
     def _tokenize_one(
         self,
@@ -168,11 +182,13 @@ class TokenService:
             for row in session.scalars(select(Token).where(Token.token.in_(set(tokens))))
         }
         results: list[DetokenizeResult] = []
+        audit: list[str] = []  # internal detail: denied vs not_found (clients see neither)
         for token in tokens:
             row = rows.get(token)
             effect = effects.get(FieldType(row.type), Effect.deny) if row else Effect.deny
             if row is None or effect is Effect.deny:
                 results.append(DetokenizeResult(token, error=NOT_AVAILABLE))
+                audit.append("not_found" if row is None else "denied")
                 continue
             field_type = FieldType(row.type)
             value = self._cipher.decrypt(
@@ -184,11 +200,22 @@ class TokenService:
             )
             if effect is Effect.mask:
                 results.append(DetokenizeResult(token, mask(field_type, value), masked=True))
+                audit.append("masked")
             else:
                 results.append(DetokenizeResult(token, to_output(field_type, value)))
+                audit.append("allowed")
+        append(
+            session,
+            key.tenant_id,
+            Actor.api_key(key.id),
+            "detokenize",
+            token_ids=list(tokens),
+            outcome={"results": audit},
+        )
         return results
 
-    def delete_token(self, session: Session, token: str) -> None:
+    def delete_token(self, session: Session, key: AuthenticatedKey, token: str) -> None:
         result = session.execute(delete(Token).where(Token.token == token))
         if result.rowcount == 0:  # type: ignore[attr-defined]
             raise NotFound("Token not found.")
+        append(session, key.tenant_id, Actor.api_key(key.id), "token.delete", token_ids=[token])
