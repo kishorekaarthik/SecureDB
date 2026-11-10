@@ -190,3 +190,17 @@ def test_string_types_reject_non_strings(field_type: FieldType) -> None:
 def test_pan_normalization_is_idempotent(raw: str) -> None:
     once = normalize(FieldType.pan, raw)
     assert normalize(FieldType.pan, once) == once
+
+
+@pytest.mark.parametrize(
+    ("field_type", "raw"),
+    [
+        (FieldType.generic, "\ud800"),
+        (FieldType.email, "\ud800@example.com"),
+        (FieldType.pan, "ABCDE1234\ud800"),
+        (FieldType.bank_account, {"account_number": "123456789012\ud800", "ifsc": "HDFC0001234"}),
+    ],
+)
+def test_text_that_is_not_valid_utf8_is_rejected(field_type: FieldType, raw: object) -> None:
+    with pytest.raises(FieldValidationError):
+        normalize(field_type, raw)

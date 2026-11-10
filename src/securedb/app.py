@@ -15,7 +15,7 @@ from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.session import Database
 from securedb.errors import UnhandledErrorMiddleware, install_error_handlers
 from securedb.logs import configure_logging
-from securedb.middleware import RequestIdMiddleware
+from securedb.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
 from securedb.vault.service import TokenService
 
 
@@ -56,6 +56,7 @@ def create_app(
 
     # Added first = innermost: errors are caught inside RequestIdMiddleware.
     app.add_middleware(UnhandledErrorMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_body_bytes)
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
     app.include_router(health.router)

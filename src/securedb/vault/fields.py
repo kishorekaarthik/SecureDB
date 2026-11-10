@@ -79,6 +79,10 @@ def verhoeff_check_digit(base: str) -> str:
 def _require_str(raw: Any, label: str) -> str:
     if not isinstance(raw, str):
         raise FieldValidationError(f"Invalid {label}: expected a string.")
+    try:
+        raw.encode("utf-8")  # rejects lone surrogates, which JSON can smuggle in
+    except UnicodeEncodeError:
+        raise FieldValidationError(f"Invalid {label}: not valid text.") from None
     return raw
 
 
@@ -102,9 +106,11 @@ def _bank_account(raw: Any) -> str:
     )
     if not isinstance(raw, Mapping):
         raise error
-    account, ifsc = raw.get("account_number"), raw.get("ifsc")
-    if not isinstance(account, str) or not isinstance(ifsc, str):
-        raise error
+    try:
+        account = _require_str(raw.get("account_number"), "bank account")
+        ifsc = _require_str(raw.get("ifsc"), "bank account")
+    except FieldValidationError:
+        raise error from None
     account = _SEPARATORS.sub("", account)
     ifsc = ifsc.strip().upper()
     if not _ACCOUNT.fullmatch(account) or not _IFSC.fullmatch(ifsc):

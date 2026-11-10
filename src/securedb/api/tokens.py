@@ -13,7 +13,10 @@ from securedb.vault.service import TokenizeItem, TokenService
 
 router = APIRouter(prefix="/v1/tokens", tags=["tokens"])
 
-TokenStr = Annotated[str, Field(min_length=1, max_length=128)]
+TOKEN_PATTERN = r"^tok_[a-z_]+_[A-Za-z0-9]{22}$"  # noqa: S105 - a regex, not a secret
+SUBJECT_PATTERN = r"^[A-Za-z0-9._:@-]{1,128}$"
+TokenStr = Annotated[str, Field(max_length=64, pattern=TOKEN_PATTERN)]
+ValueStr = Annotated[str, Field(max_length=4096)]
 
 
 class BankAccountIn(BaseModel):
@@ -24,8 +27,8 @@ class BankAccountIn(BaseModel):
 
 class TokenizeItemIn(BaseModel):
     type: FieldType
-    value: str | BankAccountIn
-    subject_id: str | None = Field(default=None, min_length=1, max_length=128)
+    value: ValueStr | BankAccountIn
+    subject_id: str | None = Field(default=None, pattern=SUBJECT_PATTERN)
 
 
 class TokenizeRequest(BaseModel):
@@ -106,7 +109,7 @@ def detokenize(
 
 @router.delete("/{token}", status_code=204, response_class=Response)
 def delete_token(
-    token: Annotated[str, Path(min_length=1, max_length=128)],
+    token: Annotated[str, Path(max_length=64, pattern=TOKEN_PATTERN)],
     request: Request,
     key: Annotated[AuthenticatedKey, Depends(require(Scope.subjects_erase))],
 ) -> Response:

@@ -76,7 +76,7 @@ def test_tokenize_then_detokenize(api: Api) -> None:
     )
     response = api.client.post(
         "/v1/tokens/detokenize",
-        json={"tokens": [pan, account, "tok_pan_unknown0000000000000"]},
+        json={"tokens": [pan, account, "tok_pan_uuuuuuuuuuuuuuuuuuuuuu"]},
         headers=_auth(key),
     )
     assert response.status_code == 200
@@ -88,7 +88,7 @@ def test_tokenize_then_detokenize(api: Api) -> None:
                 "value": {"account_number": "XXXXXXXX9012", "ifsc": "HDFC0001234"},
                 "masked": True,
             },
-            {"token": "tok_pan_unknown0000000000000", "masked": False, "error": "not_available"},
+            {"token": "tok_pan_uuuuuuuuuuuuuuuuuuuuuu", "masked": False, "error": "not_available"},
         ]
     }
 
@@ -130,7 +130,9 @@ def test_revoked_key_is_401(api: Api) -> None:
 def test_missing_scope_is_403(api: Api) -> None:
     key = api.key(Scope.tokenize, policies=FULL)
     response = api.client.post(
-        "/v1/tokens/detokenize", json={"tokens": ["tok_pan_x"]}, headers=_auth(key)
+        "/v1/tokens/detokenize",
+        json={"tokens": ["tok_pan_xxxxxxxxxxxxxxxxxxxxxx"]},
+        headers=_auth(key),
     )
     assert response.status_code == 403
     assert "detokenize" in response.json()["detail"]
@@ -161,7 +163,7 @@ def test_batch_size_limits(api: Api, count: int) -> None:
     assert (
         api.client.post("/v1/tokens", json={"items": items}, headers=_auth(key)).status_code == 422
     )
-    tokens = ["tok_pan_x"] * count
+    tokens = ["tok_pan_xxxxxxxxxxxxxxxxxxxxxx"] * count
     response = api.client.post("/v1/tokens/detokenize", json={"tokens": tokens}, headers=_auth(key))
     assert response.status_code == 422
 
@@ -208,3 +210,68 @@ def test_rate_limit_returns_429_with_retry_after(
         assert int(response.headers["retry-after"]) >= 1
     finally:
         limited.app.state.db.dispose()
+
+
+@pytest.mark.parametrize(
+    "token", ["tok_pan_has\u0000nul000000000000", "not-a-token", "tok_pan_short", "x" * 129]
+)
+def test_malformed_tokens_are_422(api: Api, token: str) -> None:
+    key = api.key(*ALL_SCOPES, policies=FULL)
+    response = api.client.post(
+        "/v1/tokens/detokenize", json={"tokens": [token]}, headers=_auth(key)
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("path", ["tok_pan_has%00nul000000000000", "not-a-token"])
+def test_malformed_token_in_delete_path_is_422(api: Api, path: str) -> None:
+    key = api.key(*ALL_SCOPES, policies=FULL)
+    assert api.client.delete(f"/v1/tokens/{path}", headers=_auth(key)).status_code == 422
+
+
+@pytest.mark.parametrize("subject", ["cust\u000042", "", "x" * 129, "has space"])
+def test_malformed_subject_ids_are_422(api: Api, subject: str) -> None:
+    key = api.key(*ALL_SCOPES, policies=FULL)
+    item = {"type": "pan", "value": PAN, "subject_id": subject}
+    response = api.client.post("/v1/tokens", json={"items": [item]}, headers=_auth(key))
+    assert response.status_code == 422
+
+
+def test_lone_surrogate_value_is_422_not_500(api: Api) -> None:
+    key = api.key(*ALL_SCOPES, policies={(FieldType.generic, Action.tokenize): Effect.allow})
+    raw = b'{"items": [{"type": "generic", "value": "\\ud800"}]}'  # escaped lone surrogate
+    response = api.client.post(
+        "/v1/tokens", content=raw, headers={**_auth(key), "Content-Type": "application/json"}
+    )
+    assert response.status_code == 422
+
+
+def test_oversized_value_is_422(api: Api) -> None:
+    key = api.key(*ALL_SCOPES, policies={(FieldType.generic, Action.tokenize): Effect.allow})
+    item = {"type": "generic", "value": "x" * 4097}
+    response = api.client.post("/v1/tokens", json={"items": [item]}, headers=_auth(key))
+    assert response.status_code == 422
+    assert "xxxx" not in response.text
+
+
+def test_oversized_body_is_rejected_before_authentication(api: Api) -> None:
+    body = b'{"items": [{"type": "generic", "value": "' + b"x" * (2 * 1024 * 1024) + b'"}]}'
+    response = api.client.post(
+        "/v1/tokens", content=body, headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 413
+    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_oversized_chunked_body_is_rejected(api: Api) -> None:
+    def chunks():  # no Content-Length: streamed with chunked transfer encoding
+        yield b'{"items": [{"type": "generic", "value": "'
+        for _ in range(64):
+            yield b"x" * 32_768
+        yield b'"}]}'
+
+    response = api.client.post(
+        "/v1/tokens", content=chunks(), headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 413

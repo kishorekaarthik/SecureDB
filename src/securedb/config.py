@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     master_key_file: Path = Path("securedb-master.key")
     master_key_passphrase: SecretStr | None = None
     rate_limit_per_minute: int = Field(default=600, ge=1)
+    max_body_bytes: int = Field(default=1_048_576, ge=1024)
 
     @field_validator("database_url", "migration_database_url")
     @classmethod
