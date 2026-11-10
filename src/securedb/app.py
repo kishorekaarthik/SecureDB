@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from securedb import __version__
-from securedb.api import health, tokens
+from securedb.api import audit, health, tokens
 from securedb.api.ratelimit import FixedWindowRateLimiter
 from securedb.config import Settings, get_settings
 from securedb.crypto.master_key import load_key_provider
@@ -61,4 +61,5 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health.router)
     app.include_router(tokens.router)
+    app.include_router(audit.router)
     return app

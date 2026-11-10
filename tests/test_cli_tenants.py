@@ -2,6 +2,7 @@ import re
 from collections.abc import Iterator
 
 import pytest
+from sqlalchemy import Engine, text
 from typer.testing import CliRunner
 
 from securedb import cli
@@ -14,6 +15,7 @@ from securedb.policy.engine import Action, Effect, decide
 from securedb.tenants.api_keys import authenticate
 from securedb.tenants.service import find_tenant_id
 from securedb.vault.fields import FieldType
+from tests.helpers import set_tenant
 
 runner = CliRunner()
 KEY = re.compile(r"sdb_live_[A-Za-z0-9]{12}_[A-Za-z0-9]{32}")
@@ -113,3 +115,16 @@ def test_locked_vault_refuses_to_create_tenants(
     code, output = _run("create-tenant", "acme")
     assert code == 1
     assert "securedb init" in output
+
+
+def test_verify_audit(wired: Database, owner_engine: Engine) -> None:
+    _run("create-tenant", "acme")
+    code, output = _run("verify-audit", "--tenant", "acme")
+    assert code == 0, output
+    assert "OK" in output and "1 entries" in output
+    with owner_engine.begin() as conn:
+        set_tenant(conn, find_tenant_id(wired, "acme"))
+        conn.execute(text("UPDATE audit_log SET action = 'tampered'"))
+    code, output = _run("verify-audit", "--tenant", "acme")
+    assert code == 2
+    assert "BROKEN" in output and "seq 1" in output

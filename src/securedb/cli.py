@@ -12,6 +12,7 @@ import uvicorn
 from sqlalchemy import select
 
 from securedb import __version__
+from securedb.audit.log import verify
 from securedb.config import get_settings
 from securedb.crypto.master_key import (
     MasterKeyError,
@@ -187,3 +188,23 @@ def init(
     except MasterKeyError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
+
+
+@app.command("verify-audit")
+def verify_audit_command(tenant: TenantOption) -> None:
+    """Recompute a tenant's audit hash chain. Exits 2 if it is broken."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            result = verify(session, tenant_id)
+        if result.ok:
+            typer.echo(f"OK: {result.entries} entries, head {result.head_hash}")
+            return
+        typer.echo(
+            f"BROKEN at seq {result.first_broken_seq} "
+            f"(first {result.entries} entries intact, head {result.head_hash})"
+        )
+        raise typer.Exit(code=2)
+
+    _with_database(run)
