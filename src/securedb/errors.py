@@ -24,6 +24,7 @@ class DomainError(Exception):
 
     def __init__(self, detail: str | None = None) -> None:
         self.detail = detail or self.title
+        self.headers: dict[str, str] = {}
         super().__init__(self.detail)
 
 
@@ -35,6 +36,29 @@ class NotFound(DomainError):
 class Unauthorized(DomainError):
     status_code = 401
     title = "Unauthorized"
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail)
+        self.headers["WWW-Authenticate"] = "Bearer"
+
+
+class Forbidden(DomainError):
+    status_code = 403
+    title = "Forbidden"
+
+
+class UnprocessableEntity(DomainError):
+    status_code = 422
+    title = "Unprocessable Content"
+
+
+class RateLimited(DomainError):
+    status_code = 429
+    title = "Too Many Requests"
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__("Rate limit exceeded for this API key.")
+        self.headers["Retry-After"] = str(retry_after)
 
 
 class CryptoError(DomainError):
@@ -81,7 +105,13 @@ def problem_response(
 
 async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
     error = cast(DomainError, exc)
-    return problem_response(error.status_code, error.title, error.detail, get_request_id(request))
+    return problem_response(
+        error.status_code,
+        error.title,
+        error.detail,
+        get_request_id(request),
+        headers=error.headers or None,
+    )
 
 
 async def _handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
