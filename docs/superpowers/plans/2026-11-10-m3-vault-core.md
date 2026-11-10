@@ -42,3 +42,15 @@ All tenant predicates use `tenant_id = NULLIF(current_setting('app.tenant_id', t
 5. **TokenService** — `securedb/vault/service.py`: `tokenize`, `detokenize`, `delete_token`, new errors `Forbidden`, `UnprocessableEntity`. Tests: round trip per type, dedup, concurrent dedup, policy deny/mask, not_available uniformity, cross-tenant isolation, token format.
 6. **HTTP API + rate limit** — `securedb/api/auth.py` (bearer dependency, scopes), `securedb/api/tokens.py`, `securedb/api/ratelimit.py`; `app.state.cipher`. Tests: end-to-end with TestClient, 401 with `WWW-Authenticate`, 403 scope, 422 without PII, 429 + Retry-After, limits 1..100.
 7. **CLI** — `create-tenant`, `create-api-key`, `revoke-api-key`, `set-policy`. Tests via CliRunner with an in-memory keychain master key.
+
+## Review outcome
+
+Fresh whole-branch review: 0 Critical, 4 Important (all fixed test-first), 11 Minor (deferred).
+
+Fixed:
+1. Opposite-order concurrent batches deadlocked (40P01 → 500): inserts now run in canonical `(type, lookup_hmac)` order. Reproduced 24/25 rounds before the fix.
+2. Dedup dropped later `subject_id`s: replaced `tokens.subject_id` with a `token_subjects` link table (RLS, `ON DELETE CASCADE`) so a shared value keeps every subject — required for correct DPDP erasure in M5.
+3. Lone surrogates / NUL bytes produced 500s: strict UTF-8 check in validators; token and subject-ID patterns; value max length.
+4. Unbounded bodies were parsed before auth: `BodySizeLimitMiddleware` (1 MiB default) returns 413 on Content-Length or streamed size.
+
+Deferred minors: rate limit applied after auth and the `last_used_at` write; `last_used_at` written every request; no composite FK tying a policy's key to the same tenant; no CHECK constraints on `field_type`/`scopes`; bank-account mask reveals account length and non-+91 phone mask hides the country code; `0`-prefixed Indian mobile numbers rejected; `loc` may echo unknown bank-account keys; a single tampered row fails a whole detokenize batch with 500; CLI loads the key provider for every command and does not catch database errors; ~7 round trips per tokenized item; plan named `app.state.cipher` (code uses `app.state.tokens`).
