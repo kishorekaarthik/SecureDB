@@ -160,3 +160,50 @@ class AuditLog(Base):
     request_id: Mapped[str | None] = mapped_column(Text)
     prev_hash: Mapped[bytes] = mapped_column(LargeBinary)
     hash: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class ConsoleUser(Base):
+    """A person who can sign in to a tenant's admin console."""
+
+    __tablename__ = "console_users"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_console_users_tenant_email"),
+        CheckConstraint("role IN ('owner', 'viewer')", name="ck_console_users_role"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"))
+    email: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str] = mapped_column(Text)
+    # TOTP secret, encrypted with the tenant DEK (AAD bound to this user).
+    totp_secret_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    totp_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    totp_key_version: Mapped[int] = mapped_column()
+    last_totp_step: Mapped[int | None] = mapped_column(BigInteger)
+    role: Mapped[str] = mapped_column(Text)
+    failed_logins: Mapped[int] = mapped_column(server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class ConsoleSession(Base):
+    """A console session. Only the SHA-256 of the cookie value is stored."""
+
+    __tablename__ = "console_sessions"
+
+    id_hash: Mapped[bytes] = mapped_column(LargeBinary, primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("console_users.id", ondelete="CASCADE"))
+    csrf_token: Mapped[str] = mapped_column(Text)
+    verified: Mapped[bool] = mapped_column()  # False until the TOTP step succeeds
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

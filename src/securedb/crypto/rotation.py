@@ -15,7 +15,7 @@ from securedb.crypto.tenant_keys import (
     lookup_context,
 )
 from securedb.crypto.values import EncryptedValue, ValueCipher
-from securedb.db.models import Tenant, TenantKey, Token
+from securedb.db.models import ConsoleUser, Tenant, TenantKey, Token
 from securedb.db.session import Database
 from securedb.errors import CryptoError
 
@@ -93,12 +93,46 @@ def reencrypt(
             total += len(rows)
 
     with db.tenant_session(tenant_id) as session:
+        # Console users' TOTP secrets are encrypted with the tenant DEK too.
+        active = keyring.active_dek(session, tenant_id)
+        users = session.scalars(
+            select(ConsoleUser)
+            .where(ConsoleUser.totp_key_version != active.version)
+            .with_for_update()
+        ).all()
+        for user in users:
+            aad_token = f"console_user:{user.id}"
+            secret = cipher.decrypt(
+                session,
+                tenant_id,
+                aad_token,
+                "console_totp",
+                EncryptedValue(user.totp_secret_enc, user.totp_nonce, user.totp_key_version),
+            )
+            fresh = cipher.encrypt(session, tenant_id, aad_token, "console_totp", secret)
+            user.totp_secret_enc, user.totp_nonce, user.totp_key_version = (
+                fresh.ciphertext,
+                fresh.nonce,
+                fresh.key_version,
+            )
+        if users:
+            session.flush()
+            append(
+                session,
+                tenant_id,
+                actor,
+                "key.reencrypt_totp",
+                outcome={"count": len(users), "to_version": active.version},
+            )
+
+    with db.tenant_session(tenant_id) as session:
         retiring = session.scalars(
             select(TenantKey.version).where(
                 TenantKey.tenant_id == tenant_id, TenantKey.status == "retiring"
             )
         ).all()
         in_use = set(session.scalars(select(Token.key_version).distinct()).all())
+        in_use |= set(session.scalars(select(ConsoleUser.totp_key_version).distinct()).all())
         retired = sorted(v for v in retiring if v not in in_use)
         if retired:
             session.execute(
