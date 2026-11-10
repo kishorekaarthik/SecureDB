@@ -43,6 +43,7 @@ class ExportOut(BaseModel):
     subject_ref: str
     tokens: list[ExportedTokenOut]
     history: list[HistoryOut]
+    history_truncated: bool
 
 
 def _db(request: Request) -> Database:
@@ -95,4 +96,5 @@ def export_subject(
             )
             for h in export.history
         ],
+        history_truncated=export.history_truncated,
     )

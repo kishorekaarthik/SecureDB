@@ -199,3 +199,33 @@ def test_tokenize_racing_an_erasure_never_fails_or_returns_a_dead_token(world: W
         with world.db.tenant_session(world.tenant) as session:
             [detok] = world.tokens.detokenize(session, world.key, [token])
         assert detok.error is None
+
+
+def test_export_keeps_the_most_recent_history_and_flags_truncation(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import securedb.vault.subjects as subjects_module
+
+    pan = _tokenize(world, FieldType.pan, PAN, "alice")
+    for _ in range(3):
+        with world.db.tenant_session(world.tenant) as session:
+            world.tokens.detokenize(session, world.key, [pan])
+    monkeypatch.setattr(subjects_module, "HISTORY_LIMIT", 2)
+    with world.db.tenant_session(world.tenant) as session:
+        export = world.subjects.export(session, world.key, "alice")
+    assert export.history_truncated is True
+    assert [h.action for h in export.history] == ["detokenize", "detokenize"]
+    assert export.history[0].seq < export.history[1].seq  # oldest-first within the window
+    with world.db.tenant_session(world.tenant) as session:
+        latest = max(
+            e.seq
+            for e in list_entries(session, world.tenant, limit=200)
+            if e.action == "detokenize"
+        )
+    assert export.history[-1].seq == latest
+
+
+def test_export_history_is_not_flagged_when_complete(world: World) -> None:
+    _tokenize(world, FieldType.pan, PAN, "alice")
+    with world.db.tenant_session(world.tenant) as session:
+        assert world.subjects.export(session, world.key, "alice").history_truncated is False

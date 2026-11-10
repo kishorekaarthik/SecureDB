@@ -146,6 +146,7 @@ class AuditLog(Base):
         CheckConstraint(
             "actor_type IN ('api_key', 'console_user', 'system')", name="ck_audit_log_actor_type"
         ),
+        Index("ix_audit_log_token_ids", "token_ids", postgresql_using="gin"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), primary_key=True)

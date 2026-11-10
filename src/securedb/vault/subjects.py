@@ -53,7 +53,8 @@ class HistoryEntry:
 class SubjectExport:
     subject_ref: str
     tokens: list[ExportedToken]
-    history: list[HistoryEntry]
+    history: list[HistoryEntry]  # the most recent HISTORY_LIMIT entries, oldest first
+    history_truncated: bool
 
 
 class SubjectService:
@@ -145,19 +146,23 @@ class SubjectService:
                     masked=effect is Effect.mask,
                 )
             )
-        history = (
-            [
-                HistoryEntry(entry.seq, entry.ts, entry.action, entry.actor_type, entry.actor_id)
-                for entry in session.scalars(
+        recent = (
+            list(
+                session.scalars(
                     select(AuditLog)
                     .where(AuditLog.tenant_id == tenant_id, AuditLog.token_ids.overlap(token_ids))
-                    .order_by(AuditLog.seq)
-                    .limit(HISTORY_LIMIT)
+                    .order_by(AuditLog.seq.desc())
+                    .limit(HISTORY_LIMIT + 1)
                 )
-            ]
+            )
             if token_ids
             else []
         )
+        truncated = len(recent) > HISTORY_LIMIT
+        history = [
+            HistoryEntry(entry.seq, entry.ts, entry.action, entry.actor_type, entry.actor_id)
+            for entry in reversed(recent[:HISTORY_LIMIT])
+        ]
         reference = self.subject_ref(session, tenant_id, subject_id)
         append(
             session,
@@ -167,4 +172,6 @@ class SubjectService:
             token_ids=token_ids,
             outcome={"subject_ref": reference, "tokens": len(token_ids)},
         )
-        return SubjectExport(subject_ref=reference, tokens=exported, history=history)
+        return SubjectExport(
+            subject_ref=reference, tokens=exported, history=history, history_truncated=truncated
+        )

@@ -27,3 +27,17 @@ re-encryption, and master-key rotation.
 3. Subject erasure + export service (vault/subjects.py). Tests: sole-owner tokens deleted, shared tokens retained, audit subject_ref, export contents and policy-based values, cross-tenant isolation.
 4. API `DELETE /v1/subjects/{id}`, `GET /v1/subjects/{id}/export`. Tests: scopes, 404 for unknown subject? (no — erasing an unknown subject returns `{deleted: 0}`; export returns empty), validation.
 5. CLI `rotate-dek`, `reencrypt`, `rotate-master` (keychain pending/promote). Tests with in-memory keychain.
+
+## Review outcome
+
+Fresh whole-branch review: 1 Critical, 5 Important (all fixed test-first), 10 Minor (deferred).
+
+Fixed:
+1. (Critical) `rotate-master` on a file-store setup moved the key into the keychain and left the server unable to unwrap after restart while reporting success: now refused with the manual procedure.
+2. A crash mid-promotion left a stale pending key, turning the next rotation into a silent no-op (X -> X) and overwriting `previous`: stage/promote now detect and finish it.
+3. A mixed key state (tenant created under the old key mid-rotation) blocked rotation forever: re-wrap is idempotent per key, and a key-management advisory lock (exclusive for rotation, shared for key creation) prevents the mix; concurrent `rotate-dek` now queues.
+4. Subject IDs (possibly e-mail addresses) reached uvicorn access logs via URL paths: redacted by the log processor.
+5. Tokenize racing an erasure returned a foreign-key 500 (reproduced in round 1) or a deleted token: existing tokens are locked FOR KEY SHARE.
+6. Export history was silently the *oldest* 1000 entries and unindexed: now the most recent window with `history_truncated`, plus a GIN index (migration 0006).
+
+Deferred minors: `reencrypt` re-scans moved rows (no `(tenant_id, key_version)` index / keyset pagination); `reencrypt` does not report rows left on old versions or name an undecryptable token; CLI shows CryptoError as "Internal Server Error"; `rotate_master` holds every tenant's audit lock until commit (matters with KMS); "(N tenants re-wrapped)" wording; only one `previous` key generation kept; erasure's FOR UPDATE silently relies on the 0005 grant; `subject_ref` domain separation relies on no FieldType named "subject"; a few test gaps (0005 downgrade, multi-version history).

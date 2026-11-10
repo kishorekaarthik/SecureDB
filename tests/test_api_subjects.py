@@ -91,3 +91,11 @@ def test_unknown_subject_is_an_empty_result(ctx: tuple[TestClient, Database, uui
         "retained_shared": 0,
     }
     assert client.get("/v1/subjects/nobody/export", headers=headers).json()["tokens"] == []
+
+
+def test_export_reports_history_truncation(ctx: tuple[TestClient, Database, uuid.UUID]) -> None:
+    client, db, tenant = ctx
+    headers = _headers(db, tenant, Scope.subjects_export)
+    _tokenize(client, headers, "cust-1")
+    body = client.get("/v1/subjects/cust-1/export", headers=headers).json()
+    assert body["history_truncated"] is False
