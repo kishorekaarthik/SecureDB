@@ -38,6 +38,10 @@ app = typer.Typer(no_args_is_help=True, help="SecureDB Vault operator CLI.")
 TenantOption = Annotated[str, typer.Option("--tenant", help="Tenant name.")]
 
 
+def _master_key_store() -> str:
+    return get_settings().master_key_store
+
+
 def _open() -> tuple[Database, KeyProvider]:
     settings = get_settings()
     return Database(settings.database_url), load_key_provider(settings)
@@ -279,6 +283,15 @@ def rotate_master_command() -> None:
     transaction, then the pending key is promoted (the old one is kept as 'previous').
     Re-running after an interruption finishes the job. Restart servers afterwards.
     """
+
+    if _master_key_store() != "keychain":
+        typer.echo(
+            "Error: rotate-master supports the OS-keychain store only. For a file store: "
+            "back up the key file and database, create a new key file, re-wrap with it, "
+            "then point SECUREDB_MASTER_KEY_FILE at the new file (see docs).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     def run(db: Database, provider: KeyProvider) -> None:
         current = _unlocked(provider)  # never rotate (or create) a key without the current one

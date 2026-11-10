@@ -42,6 +42,7 @@ def keychain_provider(monkeypatch: pytest.MonkeyPatch, database: Database) -> Lo
         return database, mk.load_keychain_master_key()
 
     monkeypatch.setattr(cli, "_open", fake_open)
+    monkeypatch.setattr(cli, "_master_key_store", lambda: "keychain")
     return mk.load_keychain_master_key()
 
 
@@ -153,3 +154,41 @@ def test_rotation_commands_need_an_unlocked_vault(
     for command in (["rotate-dek", "--tenant", "acme"], ["reencrypt", "--tenant", "acme"]):
         code, output = _run(*command)
         assert code == 1 and "locked" in output
+
+
+def test_rotate_master_refuses_the_file_store(
+    monkeypatch: pytest.MonkeyPatch,
+    database: Database,
+    keychain_provider: LocalKeyProvider,
+    memory_keyring: MemoryKeyring,
+) -> None:
+    _seed(database, keychain_provider)
+    monkeypatch.setattr(cli, "_master_key_store", lambda: "file")
+    code, output = _run("rotate-master")
+    assert code == 1
+    assert "file" in output
+    assert (mk.KEYCHAIN_SERVICE, mk.PENDING_USERNAME) not in memory_keyring.entries
+    assert mk.load_keychain_master_key().key_id == keychain_provider.key_id
+
+
+def test_rotate_master_after_a_crash_mid_promotion_still_rotates(
+    database: Database, keychain_provider: LocalKeyProvider, memory_keyring: MemoryKeyring
+) -> None:
+    token, _ = _seed(database, keychain_provider)
+    # A -> B rotation died after promotion's second write: current == pending == B.
+    b = mk.stage_keychain_master_key()
+    rotate_master(database, keychain_provider, b, actor=TEST)
+    pending_raw = memory_keyring.entries[(mk.KEYCHAIN_SERVICE, mk.PENDING_USERNAME)]
+    memory_keyring.entries[(mk.KEYCHAIN_SERVICE, mk.PREVIOUS_USERNAME)] = memory_keyring.entries[
+        (mk.KEYCHAIN_SERVICE, mk.KEYCHAIN_USERNAME)
+    ]
+    memory_keyring.entries[(mk.KEYCHAIN_SERVICE, mk.KEYCHAIN_USERNAME)] = pending_raw
+
+    code, output = _run("rotate-master")
+    assert code == 0, output
+    c = mk.load_keychain_master_key()
+    assert c.key_id not in (keychain_provider.key_id, b.key_id)
+    previous = json.loads(memory_keyring.entries[(mk.KEYCHAIN_SERVICE, mk.PREVIOUS_USERNAME)])
+    assert previous["key_id"] == b.key_id
+    assert f"{b.key_id} -> {c.key_id}" in output
+    assert _decrypts(database, c, token)

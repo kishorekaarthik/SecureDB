@@ -105,12 +105,21 @@ def stage_keychain_master_key() -> LocalKeyProvider:
     """
     try:
         raw = keyring.get_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
+        current = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+        if raw is not None and current is not None and _same_key(raw, current):
+            # A previous promotion crashed after making pending current: finish it.
+            keyring.delete_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
+            raw = None
         if raw is None:
             raw = _new_entry()
             keyring.set_password(KEYCHAIN_SERVICE, PENDING_USERNAME, raw)
     except KeyringError:
         raise MasterKeyError("The OS keychain is unavailable.") from None
     return _provider_from_entry(raw)
+
+
+def _same_key(first: str, second: str) -> bool:
+    return _provider_from_entry(first).key_id == _provider_from_entry(second).key_id
 
 
 def promote_keychain_master_key() -> None:
@@ -120,9 +129,11 @@ def promote_keychain_master_key() -> None:
         if pending is None:
             raise MasterKeyError("No pending master key to promote.")
         current = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
-        if current is not None:
+        if current is not None and not _same_key(current, pending):
             keyring.set_password(KEYCHAIN_SERVICE, PREVIOUS_USERNAME, current)
-        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, pending)
+            keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, pending)
+        elif current is None:
+            keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, pending)
         keyring.delete_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
     except KeyringError:
         raise MasterKeyError("The OS keychain is unavailable.") from None
