@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Verify audit chain{% endblock %}
+{% block content %}
+<h1>Verify audit chain</h1>
+<section class="card">
+  {% if result.ok %}
+  <p class="note ok">Chain intact: {{ result.entries }} entries{% if anchored %}, and it matches your anchor{% endif %}.</p>
+  {% else %}
+  <p class="note bad">Chain broken at entry {{ result.first_broken_seq }} ({{ result.entries }} entries before it are intact).</p>
+  {% endif %}
+  {% if result.head_hash %}<p>Head: entry {{ result.entries }}, hash <code>{{ result.head_hash }}</code></p>{% endif %}
+  <p class="hint">Record the entry number and hash somewhere outside this database. Checking against it later also detects deleted recent entries and a full rewrite of the log.</p>
+  <form method="get" action="/console/audit/verify" class="row">
+    <label>Anchor entry <input name="anchor_seq" type="number" min="1" required></label>
+    <label>Anchor hash <input name="anchor_hash" pattern="[0-9a-f]{64}" size="64" required></label>
+    <button type="submit">Verify against anchor</button>
+  </form>
+</section>
+{% endblock %}

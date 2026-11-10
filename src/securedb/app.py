@@ -9,13 +9,18 @@ from securedb import __version__
 from securedb.api import audit, health, subjects, tokens
 from securedb.api.ratelimit import FixedWindowRateLimiter
 from securedb.config import Settings, get_settings
+from securedb.console.routes import install_console
 from securedb.crypto.master_key import load_key_provider
 from securedb.crypto.provider import KeyProvider
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.session import Database
 from securedb.errors import UnhandledErrorMiddleware, install_error_handlers
 from securedb.logs import configure_logging
-from securedb.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
+from securedb.middleware import (
+    BodySizeLimitMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
 from securedb.vault.service import TokenService
 from securedb.vault.subjects import SubjectService
 
@@ -60,9 +65,11 @@ def create_app(
     app.add_middleware(UnhandledErrorMiddleware)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_body_bytes)
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)  # outermost: covers every response
     install_error_handlers(app)
     app.include_router(health.router)
     app.include_router(tokens.router)
     app.include_router(audit.router)
     app.include_router(subjects.router)
+    install_console(app)
     return app

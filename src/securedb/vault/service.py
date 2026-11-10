@@ -63,14 +63,27 @@ def new_token(field_type: FieldType) -> str:
     return f"tok_{field_type.value}_{suffix}"
 
 
+def _via(key: AuthenticatedKey, actor: Actor | None) -> dict[str, str]:
+    return {"via_key": str(key.id)} if actor is not None else {}
+
+
 class TokenService:
     def __init__(self, keyring: KeyRing) -> None:
         self._cipher = ValueCipher(keyring)
 
     def tokenize(
-        self, session: Session, key: AuthenticatedKey, items: Sequence[TokenizeItem]
+        self,
+        session: Session,
+        key: AuthenticatedKey,
+        items: Sequence[TokenizeItem],
+        *,
+        actor: Actor | None = None,
     ) -> list[TokenizeResult]:
-        """All items are checked before anything is written; any failure rejects the batch."""
+        """All items are checked before anything is written; any failure rejects the batch.
+
+        `actor` is for callers acting *through* a key's policies (the console playground):
+        the audit entry then names that actor and records the key as `via_key`.
+        """
         allowed = effects_for(session, key.id, Action.tokenize)
         denied = sorted({item.type.value for item in items} - {t.value for t in allowed})
         if denied:
@@ -113,13 +126,14 @@ class TokenService:
         append(
             session,
             key.tenant_id,
-            Actor.api_key(key.id),
+            actor or Actor.api_key(key.id),
             "tokenize",
             token_ids=[r.token for r in ordered],
             outcome={
                 "items": len(ordered),
                 "created": sum(r.created for r in ordered),
                 "types": sorted({r.type.value for r in ordered}),
+                **_via(key, actor),
             },
         )
         return ordered
@@ -178,7 +192,12 @@ class TokenService:
         )
 
     def detokenize(
-        self, session: Session, key: AuthenticatedKey, tokens: Sequence[str]
+        self,
+        session: Session,
+        key: AuthenticatedKey,
+        tokens: Sequence[str],
+        *,
+        actor: Actor | None = None,
     ) -> list[DetokenizeResult]:
         """Per-token results; denied and unknown tokens are indistinguishable."""
         effects = effects_for(session, key.id, Action.detokenize)
@@ -212,10 +231,10 @@ class TokenService:
         append(
             session,
             key.tenant_id,
-            Actor.api_key(key.id),
+            actor or Actor.api_key(key.id),
             "detokenize",
             token_ids=list(tokens),
-            outcome={"results": audit},
+            outcome={"results": audit, **_via(key, actor)},
         )
         return results
 

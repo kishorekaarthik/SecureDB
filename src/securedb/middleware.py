@@ -1,4 +1,4 @@
-"""ASGI middleware: request IDs and request body size limits."""
+"""ASGI middleware: request IDs, body size limits and security headers."""
 
 import re
 import uuid
@@ -102,3 +102,45 @@ class BodySizeLimitMiddleware:
             get_request_id(Request(scope)),
         )
         await response(scope, receive, send)
+
+
+CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; "
+    "frame-ancestors 'none'; base-uri 'none'"
+)
+_CSP_EXEMPT = ("/docs", "/openapi.json")  # Swagger UI (dev only) loads scripts from a CDN
+_CACHEABLE = ("/console/static/",)
+
+
+class SecurityHeadersMiddleware:
+    """Adds security headers to every response (API and console alike).
+
+    The CSP allows no scripts at all: the console is plain HTML forms. Responses are
+    marked no-store because they can contain decrypted values or one-time secrets.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path: str = scope.get("path", "")
+        https = scope.get("scheme") == "https"
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["X-Frame-Options"] = "DENY"
+                headers["Referrer-Policy"] = "no-referrer"
+                if not path.startswith(_CSP_EXEMPT):
+                    headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+                if not path.startswith(_CACHEABLE):
+                    headers["Cache-Control"] = "no-store"
+                if https:
+                    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
