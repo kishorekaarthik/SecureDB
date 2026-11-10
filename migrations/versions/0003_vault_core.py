@@ -1,4 +1,4 @@
-"""API keys, access policies and tokens, all behind row-level security.
+"""API keys, access policies, tokens and token subjects, all behind row-level security.
 
 Revision ID: 0003
 Revises: 0002
@@ -81,7 +81,6 @@ def upgrade() -> None:
         sa.Column("token", sa.Text(), primary_key=True),
         sa.Column("tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("type", sa.Text(), nullable=False),
-        sa.Column("subject_id", sa.Text(), nullable=True),
         sa.Column("lookup_hmac", sa.LargeBinary(), nullable=False),
         sa.Column("ciphertext", sa.LargeBinary(), nullable=False),
         sa.Column("nonce", sa.LargeBinary(), nullable=False),
@@ -89,12 +88,27 @@ def upgrade() -> None:
         _created_at(),
         sa.UniqueConstraint("tenant_id", "type", "lookup_hmac", name="uq_tokens_dedup"),
     )
-    op.create_index("ix_tokens_tenant_subject", "tokens", ["tenant_id", "subject_id"])
     _isolate("tokens")
     op.execute("GRANT SELECT, INSERT, DELETE ON tokens TO securedb_app")
 
+    op.create_table(
+        "token_subjects",
+        sa.Column(
+            "token",
+            sa.Text(),
+            sa.ForeignKey("tokens.token", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("subject_id", sa.Text(), primary_key=True),
+        sa.Column("tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id"), nullable=False),
+    )
+    op.create_index("ix_token_subjects_subject", "token_subjects", ["tenant_id", "subject_id"])
+    _isolate("token_subjects")
+    op.execute("GRANT SELECT, INSERT, DELETE ON token_subjects TO securedb_app")
+
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS token_subjects")  # absent in early dev schemas
     op.drop_table("tokens")
     op.drop_table("policies")
     op.drop_table("api_keys")

@@ -58,7 +58,7 @@ def _count(conn: Connection, table: str) -> int:
     return count
 
 
-@pytest.mark.parametrize("table", ["api_keys", "policies", "tokens"])
+@pytest.mark.parametrize("table", ["api_keys", "policies", "tokens", "token_subjects"])
 def test_tables_are_invisible_without_tenant_context(
     app_engine: Engine, world: dict[str, uuid.UUID], table: str
 ) -> None:
@@ -119,7 +119,7 @@ def test_tokenize_policies_cannot_mask(app_engine: Engine, world: dict[str, uuid
 
 @pytest.mark.parametrize(
     "statement",
-    ["UPDATE tokens SET subject_id = 'x'", "DELETE FROM api_keys"],
+    ["UPDATE tokens SET type = 'email'", "DELETE FROM api_keys"],
 )
 def test_app_role_cannot_rewrite_tokens_or_delete_keys(
     app_engine: Engine, world: dict[str, uuid.UUID], statement: str

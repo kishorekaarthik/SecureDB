@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.crypto.values import EncryptedValue, ValueCipher
-from securedb.db.models import Token
+from securedb.db.models import Token, TokenSubject
 from securedb.errors import Forbidden, NotFound, UnprocessableEntity
 from securedb.policy.engine import Action, Effect, effects_for
 from securedb.tenants.api_keys import AuthenticatedKey
@@ -94,9 +94,20 @@ class TokenService:
         order = sorted(range(len(items)), key=lambda i: (items[i].type.value, lookups[i]))
         results: dict[int, TokenizeResult] = {}
         for index in order:
-            results[index] = self._tokenize_one(
+            result = self._tokenize_one(
                 session, key.tenant_id, items[index], normalized[index], lookups[index]
             )
+            if items[index].subject_id is not None:
+                session.execute(
+                    insert(TokenSubject)
+                    .values(
+                        token=result.token,
+                        subject_id=items[index].subject_id,
+                        tenant_id=key.tenant_id,
+                    )
+                    .on_conflict_do_nothing()
+                )
+            results[index] = result
         return [results[index] for index in range(len(items))]
 
     def _tokenize_one(
@@ -119,7 +130,6 @@ class TokenService:
                 token=token,
                 tenant_id=tenant_id,
                 type=item.type.value,
-                subject_id=item.subject_id,
                 lookup_hmac=lookup,
                 ciphertext=encrypted.ciphertext,
                 nonce=encrypted.nonce,

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from securedb.crypto.local import LocalKeyProvider
 from securedb.crypto.tenant_keys import KeyRing
-from securedb.db.models import Token
+from securedb.db.models import Token, TokenSubject
 from securedb.db.session import Database
 from securedb.errors import Forbidden, NotFound, UnprocessableEntity
 from securedb.policy.engine import Action, Effect, set_policy
@@ -152,11 +152,35 @@ def test_invalid_item_rejects_the_whole_batch_without_echoing(db: Database, worl
     assert _token_count(db, world.tenant) == 0
 
 
+def _subjects(db: Database, w: World, token: str) -> list[str]:
+    with db.tenant_session(w.tenant) as session:
+        return sorted(
+            session.scalars(
+                select(TokenSubject.subject_id).where(TokenSubject.token == token)
+            ).all()
+        )
+
+
 def test_subject_id_is_recorded(db: Database, world: World) -> None:
     [token] = _tokenize(db, world, TokenizeItem(FieldType.email, "a@b.co", subject_id="cust-42"))
+    assert _subjects(db, world, token) == ["cust-42"]
+
+
+def test_one_value_can_belong_to_several_subjects(db: Database, world: World) -> None:
+    phone_like = "family@example.com"
+    [first] = _tokenize(db, world, TokenizeItem(FieldType.email, phone_like))
+    [second] = _tokenize(db, world, TokenizeItem(FieldType.email, phone_like, subject_id="mum"))
+    [third] = _tokenize(db, world, TokenizeItem(FieldType.email, phone_like, subject_id="dad"))
+    [again] = _tokenize(db, world, TokenizeItem(FieldType.email, phone_like, subject_id="dad"))
+    assert first == second == third == again
+    assert _subjects(db, world, first) == ["dad", "mum"]
+
+
+def test_deleting_a_token_removes_its_subject_links(db: Database, world: World) -> None:
+    [token] = _tokenize(db, world, TokenizeItem(FieldType.pan, PAN, subject_id="cust-1"))
     with db.tenant_session(world.tenant) as session:
-        row = session.get(Token, token)
-    assert row is not None and row.subject_id == "cust-42"
+        world.service.delete_token(session, token)
+    assert _subjects(db, world, token) == []
 
 
 def test_delete_token(db: Database, world: World) -> None:

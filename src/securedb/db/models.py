@@ -108,15 +108,11 @@ class Token(Base):
     """A tokenized value: ciphertext plus the keyed lookup hash used for deduplication."""
 
     __tablename__ = "tokens"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "type", "lookup_hmac", name="uq_tokens_dedup"),
-        Index("ix_tokens_tenant_subject", "tenant_id", "subject_id"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "type", "lookup_hmac", name="uq_tokens_dedup"),)
 
     token: Mapped[str] = mapped_column(Text, primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"))
     type: Mapped[str] = mapped_column(Text)
-    subject_id: Mapped[str | None] = mapped_column(Text)
     lookup_hmac: Mapped[bytes] = mapped_column(LargeBinary)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
     nonce: Mapped[bytes] = mapped_column(LargeBinary)
@@ -124,3 +120,17 @@ class Token(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
+
+
+class TokenSubject(Base):
+    """Links a token to a data subject. One value (a shared phone number, a joint account)
+    can belong to several subjects; erasure removes a token only with its last subject."""
+
+    __tablename__ = "token_subjects"
+    __table_args__ = (Index("ix_token_subjects_subject", "tenant_id", "subject_id"),)
+
+    token: Mapped[str] = mapped_column(
+        ForeignKey("tokens.token", ondelete="CASCADE"), primary_key=True
+    )
+    subject_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"))
