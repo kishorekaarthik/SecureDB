@@ -142,3 +142,29 @@ def test_verify_audit_with_anchor(wired: Database) -> None:
     )
     assert (code, ok_code, bad_code) == (0, 0, 2)
     assert "BROKEN at seq 1" in bad_output
+
+
+def test_create_user_prints_the_totp_uri_once(wired: Database) -> None:
+    _run("create-tenant", "acme")
+    result = runner.invoke(
+        cli.app,
+        ["create-user", "--tenant", "acme", "--email", "Owner@Example.com", "--role", "owner"],
+        input="correct horse battery staple\ncorrect horse battery staple\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "otpauth://totp/" in result.output
+    assert "correct horse" not in result.output
+    from securedb.console import auth
+
+    assert auth.check_password(wired, "acme", "owner@example.com", "correct horse battery staple")
+
+
+def test_create_user_rejects_a_short_password(wired: Database) -> None:
+    _run("create-tenant", "acme")
+    result = runner.invoke(
+        cli.app,
+        ["create-user", "--tenant", "acme", "--email", "a@b.co", "--role", "viewer"],
+        input="short\nshort\n",
+    )
+    assert result.exit_code == 1
+    assert "at least 12" in result.output

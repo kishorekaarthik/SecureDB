@@ -14,6 +14,7 @@ from sqlalchemy import select
 from securedb import __version__
 from securedb.audit.log import Actor, verify
 from securedb.config import get_settings
+from securedb.console.auth import create_console_user
 from securedb.crypto.master_key import (
     MasterKeyError,
     init_file_master_key,
@@ -307,5 +308,33 @@ def rotate_master_command() -> None:
             f"({tenants} tenants re-wrapped). "
             "Restart running servers: they still hold the old master key."
         )
+
+    _with_database(run)
+
+
+class ConsoleRole(StrEnum):
+    owner = "owner"
+    viewer = "viewer"
+
+
+@app.command("create-user")
+def create_user_command(
+    tenant: TenantOption,
+    email: Annotated[str, typer.Option(help="The user's e-mail address (their sign-in name).")],
+    role: Annotated[ConsoleRole, typer.Option(help="owner can change things; viewer cannot.")],
+) -> None:
+    """Create an admin-console user. Prints the authenticator (TOTP) setup link once."""
+    password: str = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            _user_id, uri = create_console_user(
+                session, keyring, tenant_id, email, password, role.value, actor=Actor.system("cli")
+            )
+        typer.echo(f"Created console user {email.strip().lower()} ({role.value}).")
+        typer.echo("Add this to an authenticator app now; it is not shown again:")
+        typer.echo(uri)
 
     _with_database(run)
