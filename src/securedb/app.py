@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from securedb import __version__
-from securedb.api import health
+from securedb.api import health, tokens
+from securedb.api.ratelimit import FixedWindowRateLimiter
 from securedb.config import Settings, get_settings
 from securedb.crypto.master_key import load_key_provider
 from securedb.crypto.provider import KeyProvider
@@ -15,6 +16,7 @@ from securedb.db.session import Database
 from securedb.errors import UnhandledErrorMiddleware, install_error_handlers
 from securedb.logs import configure_logging
 from securedb.middleware import RequestIdMiddleware
+from securedb.vault.service import TokenService
 
 
 def create_app(
@@ -48,6 +50,8 @@ def create_app(
     app.state.db = db
     app.state.key_provider = provider
     app.state.keyring = KeyRing(provider)
+    app.state.tokens = TokenService(app.state.keyring)
+    app.state.rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
     app.state.readiness_checks = readiness_checks
 
     # Added first = innermost: errors are caught inside RequestIdMiddleware.
@@ -55,4 +59,5 @@ def create_app(
     app.add_middleware(RequestIdMiddleware)
     install_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(tokens.router)
     return app

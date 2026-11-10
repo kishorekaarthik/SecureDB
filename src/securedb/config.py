@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DB_SCHEME = "postgresql+psycopg://"
@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     master_key_store: Literal["keychain", "file"] = "keychain"
     master_key_file: Path = Path("securedb-master.key")
     master_key_passphrase: SecretStr | None = None
+    rate_limit_per_minute: int = Field(default=600, ge=1)
 
     @field_validator("database_url", "migration_database_url")
     @classmethod
