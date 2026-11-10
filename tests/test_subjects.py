@@ -157,3 +157,45 @@ def test_subjects_are_isolated_between_tenants(
         assert service.erase(session, other_key, "alice").deleted_tokens == []
     with world.db.tenant_session(world.tenant) as session:
         assert world.subjects.export(session, world.key, "alice").tokens != []
+
+
+def test_tokenize_racing_an_erasure_never_fails_or_returns_a_dead_token(world: World) -> None:
+    import threading
+
+    errors: list[BaseException] = []
+    for round_number in range(20):
+        value = f"race{round_number}@example.com"
+        _tokenize(world, FieldType.email, value, "alice")
+        barrier = threading.Barrier(2)
+        carol_token: list[str] = []
+
+        def erase_alice(barrier: threading.Barrier = barrier) -> None:
+            try:
+                barrier.wait()
+                with world.db.tenant_session(world.tenant) as session:
+                    world.subjects.erase(session, world.key, "alice")
+            except BaseException as exc:  # collected for the assertion below
+                errors.append(exc)
+
+        def tokenize_carol(
+            barrier: threading.Barrier = barrier,
+            value: str = value,
+            out: list[str] = carol_token,
+        ) -> None:
+            try:
+                barrier.wait()
+                out.append(_tokenize(world, FieldType.email, value, "carol"))
+            except BaseException as exc:  # collected for the assertion below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=erase_alice), threading.Thread(target=tokenize_carol)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert errors == []
+        [token] = carol_token
+        assert _exists(world, token), f"round {round_number}: carol got a deleted token"
+        with world.db.tenant_session(world.tenant) as session:
+            [detok] = world.tokens.detokenize(session, world.key, [token])
+        assert detok.error is None

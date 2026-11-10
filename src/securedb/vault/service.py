@@ -164,12 +164,17 @@ class TokenService:
     def _find(
         session: Session, tenant_id: uuid.UUID, field_type: FieldType, lookup: bytes
     ) -> str | None:
+        # FOR KEY SHARE: a concurrent erasure (which locks FOR UPDATE) either waits for us
+        # and then sees our new subject link, or finishes first and the row is simply not
+        # found here, so we mint a new token instead of returning a deleted one.
         return session.scalar(
-            select(Token.token).where(
+            select(Token.token)
+            .where(
                 Token.tenant_id == tenant_id,
                 Token.type == field_type.value,
                 Token.lookup_hmac == lookup,
             )
+            .with_for_update(key_share=True)
         )
 
     def detokenize(
