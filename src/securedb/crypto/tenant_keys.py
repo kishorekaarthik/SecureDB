@@ -27,6 +27,18 @@ def lookup_context(tenant_id: uuid.UUID) -> dict[str, str]:
     return {"purpose": "lookup", "tenant_id": str(tenant_id)}
 
 
+# One advisory lock guards wrapped-key creation against master-key rotation:
+# creating keys takes it shared, rotate_master takes it exclusive.
+KEY_MANAGEMENT_LOCK = 0x5ECDB0000001
+_LOCK_SHARED = text("SELECT pg_advisory_xact_lock_shared(:key)")
+_LOCK_EXCLUSIVE = text("SELECT pg_advisory_xact_lock(:key)")
+
+
+def lock_key_management(session: Session, *, exclusive: bool) -> None:
+    """Held until the transaction ends."""
+    session.execute(_LOCK_EXCLUSIVE if exclusive else _LOCK_SHARED, {"key": KEY_MANAGEMENT_LOCK})
+
+
 def _require_tenant_context(session: Session, tenant_id: uuid.UUID) -> None:
     """Refuse to hand out a tenant's keys outside that tenant's database context.
 
@@ -52,6 +64,7 @@ class KeyRing:
 
     def create_tenant_keys(self, session: Session, tenant_id: uuid.UUID) -> None:
         _require_tenant_context(session, tenant_id)
+        lock_key_management(session, exclusive=False)
         tenant = session.get(Tenant, tenant_id)
         if tenant is None:
             raise NotFound("Tenant not found.")
@@ -78,8 +91,11 @@ class KeyRing:
         Returns (previous_version, new_version). Call in the tenant's session.
         """
         _require_tenant_context(session, tenant_id)
+        lock_key_management(session, exclusive=False)
         previous = session.scalar(
-            select(TenantKey).where(TenantKey.tenant_id == tenant_id, TenantKey.status == "active")
+            select(TenantKey)
+            .where(TenantKey.tenant_id == tenant_id, TenantKey.status == "active")
+            .with_for_update()  # concurrent rotations of one tenant queue up instead of failing
         )
         if previous is None:
             raise NotFound("No active data key for this tenant.")

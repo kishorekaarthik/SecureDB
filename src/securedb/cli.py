@@ -23,7 +23,7 @@ from securedb.crypto.master_key import (
     stage_keychain_master_key,
 )
 from securedb.crypto.provider import KeyProvider
-from securedb.crypto.rotation import can_unwrap_all, reencrypt, rotate_dek, rotate_master
+from securedb.crypto.rotation import reencrypt, rotate_dek, rotate_master
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import ApiKey
 from securedb.db.session import Database
@@ -297,10 +297,8 @@ def rotate_master_command() -> None:
         current = _unlocked(provider)  # never rotate (or create) a key without the current one
         try:
             pending = stage_keychain_master_key()
-            if can_unwrap_all(db, pending):
-                tenants = "all"  # a previous run already re-wrapped everything
-            else:
-                tenants = str(rotate_master(db, current, pending, actor=Actor.system("cli")))
+            # Idempotent: after an interrupted run this only re-wraps what is left.
+            tenants = rotate_master(db, current, pending, actor=Actor.system("cli"))
             promote_keychain_master_key()
         except MasterKeyError as exc:
             raise ValueError(str(exc)) from None

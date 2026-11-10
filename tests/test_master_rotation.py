@@ -129,3 +129,52 @@ def test_rotate_master_with_the_wrong_old_key_changes_nothing(
     with pytest.raises(CryptoError):
         rotate_master(db, wrong, new, actor=TEST)
     assert _read(db, KeyRing(old), tenant, token) == "acme@example.com"
+
+
+def test_rotate_master_finishes_a_mixed_state(
+    db: Database, old: LocalKeyProvider, new: LocalKeyProvider
+) -> None:
+    first, first_token = _tenant_with_token(db, KeyRing(old), "acme")
+    rotate_master(db, old, new, actor=TEST)
+    # Someone still on the old key created a tenant before the keychain was promoted.
+    second, second_token = _tenant_with_token(db, KeyRing(old), "globex")
+    assert rotate_master(db, old, new, actor=TEST) == 1  # only globex needed re-wrapping
+    assert _read(db, KeyRing(new), first, first_token) == "acme@example.com"
+    assert _read(db, KeyRing(new), second, second_token) == "globex@example.com"
+    assert rotate_master(db, old, new, actor=TEST) == 0  # idempotent
+
+
+def test_rotate_master_covers_every_dek_version(
+    db: Database, old: LocalKeyProvider, new: LocalKeyProvider
+) -> None:
+    from securedb.crypto.rotation import rotate_dek
+
+    tenant, token = _tenant_with_token(db, KeyRing(old), "acme")
+    with db.tenant_session(tenant) as session:
+        rotate_dek(session, KeyRing(old), tenant, actor=TEST)
+    rotate_master(db, old, new, actor=TEST)
+    assert _read(db, KeyRing(new), tenant, token) == "acme@example.com"  # still on v1
+    with db.tenant_session(tenant) as session:
+        assert sorted(session.scalars(select(TenantKey.provider_key_id)).all()) == ["mk_new"] * 2
+
+
+def test_key_creation_waits_for_a_running_master_rotation(
+    db: Database, old: LocalKeyProvider
+) -> None:
+    import threading
+
+    from securedb.crypto.tenant_keys import lock_key_management
+
+    done = threading.Event()
+
+    def create() -> None:
+        create_tenant(db, KeyRing(old), "late", actor=TEST)
+        done.set()
+
+    with db.session() as session:
+        lock_key_management(session, exclusive=True)  # what rotate_master holds
+        worker = threading.Thread(target=create)
+        worker.start()
+        assert not done.wait(0.5)  # blocked behind the rotation
+    worker.join(timeout=10)
+    assert done.is_set()

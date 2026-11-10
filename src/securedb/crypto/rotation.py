@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from securedb.audit.log import Actor, append
 from securedb.crypto.provider import KeyProvider
-from securedb.crypto.tenant_keys import KeyRing, dek_context, lookup_context
+from securedb.crypto.tenant_keys import (
+    KeyRing,
+    dek_context,
+    lock_key_management,
+    lookup_context,
+)
 from securedb.crypto.values import EncryptedValue, ValueCipher
 from securedb.db.models import Tenant, TenantKey, Token
 from securedb.db.session import Database
@@ -108,11 +113,15 @@ def reencrypt(
 def rotate_master(db: Database, old: KeyProvider, new: KeyProvider, *, actor: Actor) -> int:
     """Re-wrap every tenant's DEKs and lookup key from `old` to `new` in ONE transaction.
 
-    Token rows are untouched (the DEKs themselves do not change). Any failure rolls the
-    whole rotation back. Running servers hold the old master key and must be restarted.
-    Returns the number of tenants re-wrapped.
+    Idempotent per key: keys already wrapped by `new` are left alone, so a rotation can be
+    re-run to finish a mixed state. Holds the key-management lock exclusively, so no keys
+    can be created under the old master key meanwhile. Token rows are untouched. Any
+    failure rolls everything back. Running servers hold the old master key and must be
+    restarted. Returns the number of tenants whose keys changed.
     """
+    changed_tenants = 0
     with db.session() as session:
+        lock_key_management(session, exclusive=True)
         tenants = session.scalars(
             select(Tenant).where(Tenant.wrapped_lookup_key.is_not(None)).order_by(Tenant.id)
         ).all()
@@ -121,13 +130,23 @@ def rotate_master(db: Database, old: KeyProvider, new: KeyProvider, *, actor: Ac
                 text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
                 {"tenant_id": str(tenant.id)},
             )
+            changed = False
             for key in session.scalars(select(TenantKey).where(TenantKey.tenant_id == tenant.id)):
+                if key.provider_key_id == new.key_id:
+                    continue
                 context = dek_context(tenant.id, key.version)
                 key.wrapped_dek = new.wrap(old.unwrap(key.wrapped_dek, context), context)
                 key.provider, key.provider_key_id = new.name, new.key_id
+                changed = True
             wrapped_lookup = tenant.wrapped_lookup_key or b""  # non-null by the query above
             context = lookup_context(tenant.id)
-            tenant.wrapped_lookup_key = new.wrap(old.unwrap(wrapped_lookup, context), context)
+            try:
+                new.unwrap(wrapped_lookup, context)  # already re-wrapped
+            except CryptoError:
+                tenant.wrapped_lookup_key = new.wrap(old.unwrap(wrapped_lookup, context), context)
+                changed = True
+            if not changed:
+                continue
             session.flush()
             append(
                 session,
@@ -136,24 +155,5 @@ def rotate_master(db: Database, old: KeyProvider, new: KeyProvider, *, actor: Ac
                 "key.rotate_master",
                 outcome={"from_key_id": old.key_id, "to_key_id": new.key_id},
             )
-    return len(tenants)
-
-
-def can_unwrap_all(db: Database, provider: KeyProvider) -> bool:
-    """True if `provider` unwraps every tenant's keys (read-only; used to resume rotations)."""
-    with db.session() as session:
-        tenants = session.scalars(select(Tenant).where(Tenant.wrapped_lookup_key.is_not(None)))
-        for tenant in tenants.all():
-            session.execute(
-                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-                {"tenant_id": str(tenant.id)},
-            )
-            try:
-                provider.unwrap(tenant.wrapped_lookup_key or b"", lookup_context(tenant.id))
-                for key in session.scalars(
-                    select(TenantKey).where(TenantKey.tenant_id == tenant.id)
-                ):
-                    provider.unwrap(key.wrapped_dek, dek_context(tenant.id, key.version))
-            except CryptoError:
-                return False
-    return True
+            changed_tenants += 1
+    return changed_tenants
