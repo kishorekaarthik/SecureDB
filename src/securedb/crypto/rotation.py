@@ -3,13 +3,14 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from securedb.audit.log import Actor, append
-from securedb.crypto.tenant_keys import KeyRing
+from securedb.crypto.provider import KeyProvider
+from securedb.crypto.tenant_keys import KeyRing, dek_context, lookup_context
 from securedb.crypto.values import EncryptedValue, ValueCipher
-from securedb.db.models import TenantKey, Token
+from securedb.db.models import Tenant, TenantKey, Token
 from securedb.db.session import Database
 
 
@@ -101,3 +102,37 @@ def reencrypt(
             )
             append(session, tenant_id, actor, "key.retire", outcome={"versions": retired})
     return ReencryptResult(reencrypted=total, retired_versions=retired)
+
+
+def rotate_master(db: Database, old: KeyProvider, new: KeyProvider, *, actor: Actor) -> int:
+    """Re-wrap every tenant's DEKs and lookup key from `old` to `new` in ONE transaction.
+
+    Token rows are untouched (the DEKs themselves do not change). Any failure rolls the
+    whole rotation back. Running servers hold the old master key and must be restarted.
+    Returns the number of tenants re-wrapped.
+    """
+    with db.session() as session:
+        tenants = session.scalars(
+            select(Tenant).where(Tenant.wrapped_lookup_key.is_not(None)).order_by(Tenant.id)
+        ).all()
+        for tenant in tenants:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant.id)},
+            )
+            for key in session.scalars(select(TenantKey).where(TenantKey.tenant_id == tenant.id)):
+                context = dek_context(tenant.id, key.version)
+                key.wrapped_dek = new.wrap(old.unwrap(key.wrapped_dek, context), context)
+                key.provider, key.provider_key_id = new.name, new.key_id
+            wrapped_lookup = tenant.wrapped_lookup_key or b""  # non-null by the query above
+            context = lookup_context(tenant.id)
+            tenant.wrapped_lookup_key = new.wrap(old.unwrap(wrapped_lookup, context), context)
+            session.flush()
+            append(
+                session,
+                tenant.id,
+                actor,
+                "key.rotate_master",
+                outcome={"from_key_id": old.key_id, "to_key_id": new.key_id},
+            )
+    return len(tenants)

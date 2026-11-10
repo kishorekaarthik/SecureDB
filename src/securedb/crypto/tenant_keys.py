@@ -19,11 +19,11 @@ class DataKey:
     key: bytes = field(repr=False)
 
 
-def _dek_context(tenant_id: uuid.UUID, version: int) -> dict[str, str]:
+def dek_context(tenant_id: uuid.UUID, version: int) -> dict[str, str]:
     return {"purpose": "dek", "tenant_id": str(tenant_id), "version": str(version)}
 
 
-def _lookup_context(tenant_id: uuid.UUID) -> dict[str, str]:
+def lookup_context(tenant_id: uuid.UUID) -> dict[str, str]:
     return {"purpose": "lookup", "tenant_id": str(tenant_id)}
 
 
@@ -63,13 +63,13 @@ class KeyRing:
             TenantKey(
                 tenant_id=tenant_id,
                 version=1,
-                wrapped_dek=self._provider.wrap(dek, _dek_context(tenant_id, 1)),
+                wrapped_dek=self._provider.wrap(dek, dek_context(tenant_id, 1)),
                 provider=self._provider.name,
                 provider_key_id=self._provider.key_id,
                 status="active",
             )
         )
-        tenant.wrapped_lookup_key = self._provider.wrap(lookup_key, _lookup_context(tenant_id))
+        tenant.wrapped_lookup_key = self._provider.wrap(lookup_key, lookup_context(tenant_id))
         session.flush()
 
     def add_dek_version(self, session: Session, tenant_id: uuid.UUID) -> tuple[int, int]:
@@ -97,7 +97,7 @@ class KeyRing:
                 tenant_id=tenant_id,
                 version=new_version,
                 wrapped_dek=self._provider.wrap(
-                    secrets.token_bytes(aead.KEY_SIZE), _dek_context(tenant_id, new_version)
+                    secrets.token_bytes(aead.KEY_SIZE), dek_context(tenant_id, new_version)
                 ),
                 provider=self._provider.name,
                 provider_key_id=self._provider.key_id,
@@ -126,7 +126,7 @@ class KeyRing:
         row = session.get(TenantKey, (tenant_id, version))
         if row is None:
             raise NotFound("Data key not found.")
-        key = self._provider.unwrap(row.wrapped_dek, _dek_context(tenant_id, version))
+        key = self._provider.unwrap(row.wrapped_dek, dek_context(tenant_id, version))
         self._deks[(tenant_id, version)] = key
         return key
 
@@ -138,6 +138,6 @@ class KeyRing:
         wrapped = session.scalar(select(Tenant.wrapped_lookup_key).where(Tenant.id == tenant_id))
         if wrapped is None:
             raise NotFound("Tenant has no lookup key.")
-        key = self._provider.unwrap(wrapped, _lookup_context(tenant_id))
+        key = self._provider.unwrap(wrapped, lookup_context(tenant_id))
         self._lookup_keys[tenant_id] = key
         return key
