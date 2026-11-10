@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -13,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -134,3 +136,26 @@ class TokenSubject(Base):
     )
     subject_id: Mapped[str] = mapped_column(Text, primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"))
+
+
+class AuditLog(Base):
+    """One entry of a tenant's hash-chained, append-only audit log. Never holds values."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_type IN ('api_key', 'console_user', 'system')", name="ck_audit_log_actor_type"
+        ),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    actor_type: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    token_ids: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    outcome: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    request_id: Mapped[str | None] = mapped_column(Text)
+    prev_hash: Mapped[bytes] = mapped_column(LargeBinary)
+    hash: Mapped[bytes] = mapped_column(LargeBinary)
