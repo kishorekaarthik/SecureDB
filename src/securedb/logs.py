@@ -25,6 +25,8 @@ SENSITIVE_KEYS = frozenset(
     }
 )
 _API_KEY_PATTERN = re.compile(r"sdb_(?:live|test)_[A-Za-z0-9]+_[A-Za-z0-9]+")
+# Subject IDs travel in URL paths (and can be e-mail addresses); access logs must not keep them.
+_SUBJECT_PATH = re.compile(r"(/v1/subjects/)[^/?\s\"]+")
 
 
 def _scrub(obj: Any) -> Any:
@@ -36,7 +38,7 @@ def _scrub(obj: Any) -> Any:
     if isinstance(obj, list | tuple):
         return type(obj)(_scrub(item) for item in obj)
     if isinstance(obj, str):
-        return _API_KEY_PATTERN.sub(REDACTED, obj)
+        return _SUBJECT_PATH.sub(rf"\g<1>{REDACTED}", _API_KEY_PATTERN.sub(REDACTED, obj))
     return obj
 
 

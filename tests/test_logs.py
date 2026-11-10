@@ -73,3 +73,19 @@ def test_passphrases_and_master_keys_are_redacted() -> None:
         "master_key": REDACTED,
         "Master_Key_Passphrase": REDACTED,
     }
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/v1/subjects/alice@example.com", "/v1/subjects/alice@example.com/export?x=1"],
+)
+def test_subject_ids_in_access_logs_are_redacted(
+    capsys: pytest.CaptureFixture[str], path: str
+) -> None:
+    configure_logging("INFO")
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:5000", "DELETE", path, "1.1", 200
+    )
+    out = capsys.readouterr().out
+    assert "alice@example.com" not in out
+    assert "/v1/subjects/[REDACTED]" in out
