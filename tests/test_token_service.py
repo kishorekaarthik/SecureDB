@@ -182,3 +182,27 @@ def test_result_reprs_hide_values(db: Database, world: World) -> None:
     [pan] = _tokenize(db, world, TokenizeItem(FieldType.pan, PAN))
     assert PAN not in repr(TokenizeItem(FieldType.pan, PAN))
     assert PAN not in repr(_detokenize(db, world, pan)[0])
+
+
+def test_opposite_order_batches_do_not_deadlock(db: Database, world: World) -> None:
+    import threading
+
+    errors: list[BaseException] = []
+    for round_number in range(25):
+        x = TokenizeItem(FieldType.email, f"x{round_number}@example.com")
+        y = TokenizeItem(FieldType.email, f"y{round_number}@example.com")
+        barrier = threading.Barrier(2)
+
+        def run(items: tuple[TokenizeItem, ...], barrier: threading.Barrier = barrier) -> None:
+            try:
+                barrier.wait()
+                _tokenize(db, world, *items)
+            except BaseException as exc:  # collected for the assertion below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=run, args=(o,)) for o in ((x, y), (y, x))]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    assert errors == []

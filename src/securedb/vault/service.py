@@ -85,15 +85,28 @@ class TokenService:
         if problems:
             raise UnprocessableEntity("; ".join(problems))
 
-        return [
-            self._tokenize_one(session, key.tenant_id, item, value)
+        lookups = [
+            self._cipher.lookup_hmac(session, key.tenant_id, item.type.value, value)
             for item, value in zip(items, normalized, strict=True)
         ]
+        # Insert in a canonical order so concurrent batches that share values always
+        # take row locks in the same sequence (no deadlocks); answer in request order.
+        order = sorted(range(len(items)), key=lambda i: (items[i].type.value, lookups[i]))
+        results: dict[int, TokenizeResult] = {}
+        for index in order:
+            results[index] = self._tokenize_one(
+                session, key.tenant_id, items[index], normalized[index], lookups[index]
+            )
+        return [results[index] for index in range(len(items))]
 
     def _tokenize_one(
-        self, session: Session, tenant_id: uuid.UUID, item: TokenizeItem, value: str
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        item: TokenizeItem,
+        value: str,
+        lookup: bytes,
     ) -> TokenizeResult:
-        lookup = self._cipher.lookup_hmac(session, tenant_id, item.type.value, value)
         existing = self._find(session, tenant_id, item.type, lookup)
         if existing is not None:
             return TokenizeResult(existing, item.type, created=False)
