@@ -19,8 +19,11 @@ from securedb.crypto.master_key import (
     init_file_master_key,
     init_keychain_master_key,
     load_key_provider,
+    promote_keychain_master_key,
+    stage_keychain_master_key,
 )
 from securedb.crypto.provider import KeyProvider
+from securedb.crypto.rotation import can_unwrap_all, reencrypt, rotate_dek, rotate_master
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import ApiKey
 from securedb.db.session import Database
@@ -224,5 +227,74 @@ def verify_audit_command(
             err=True,
         )
         raise typer.Exit(code=2)
+
+    _with_database(run)
+
+
+def _unlocked(provider: KeyProvider) -> KeyProvider:
+    if not provider.is_unlocked():
+        raise KeyProviderLocked(getattr(provider, "reason", "The vault is locked."))
+    return provider
+
+
+@app.command("rotate-dek")
+def rotate_dek_command(tenant: TenantOption) -> None:
+    """Start using a new data key for a tenant (old values keep working until re-encrypted)."""
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            version = rotate_dek(session, keyring, tenant_id, actor=Actor.system("cli"))
+        typer.echo(
+            f"Tenant {tenant} now encrypts with DEK v{version}. "
+            f"Run `securedb reencrypt --tenant {tenant}` to move existing values."
+        )
+
+    _with_database(run)
+
+
+@app.command("reencrypt")
+def reencrypt_command(
+    tenant: TenantOption,
+    batch_size: Annotated[int, typer.Option(min=1, max=10_000, help="Rows per transaction.")] = 500,
+) -> None:
+    """Re-encrypt a tenant's values with its active data key; retire unused old keys."""
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        result = reencrypt(db, keyring, tenant_id, actor=Actor.system("cli"), batch_size=batch_size)
+        retired = ", ".join(str(v) for v in result.retired_versions) or "none"
+        typer.echo(f"Re-encrypted {result.reencrypted} values; retired versions: {retired}.")
+
+    _with_database(run)
+
+
+@app.command("rotate-master")
+def rotate_master_command() -> None:
+    """Replace the OS-keychain master key; every tenant's keys are re-wrapped atomically.
+
+    Crash-safe: the new key is saved as 'pending' first, the database is re-wrapped in one
+    transaction, then the pending key is promoted (the old one is kept as 'previous').
+    Re-running after an interruption finishes the job. Restart servers afterwards.
+    """
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        current = _unlocked(provider)  # never rotate (or create) a key without the current one
+        try:
+            pending = stage_keychain_master_key()
+            if can_unwrap_all(db, pending):
+                tenants = "all"  # a previous run already re-wrapped everything
+            else:
+                tenants = str(rotate_master(db, current, pending, actor=Actor.system("cli")))
+            promote_keychain_master_key()
+        except MasterKeyError as exc:
+            raise ValueError(str(exc)) from None
+        typer.echo(
+            f"Rotated master key {provider.key_id} -> {pending.key_id} "
+            f"({tenants} tenants re-wrapped). "
+            "Restart running servers: they still hold the old master key."
+        )
 
     _with_database(run)

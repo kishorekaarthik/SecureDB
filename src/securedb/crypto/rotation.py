@@ -12,6 +12,7 @@ from securedb.crypto.tenant_keys import KeyRing, dek_context, lookup_context
 from securedb.crypto.values import EncryptedValue, ValueCipher
 from securedb.db.models import Tenant, TenantKey, Token
 from securedb.db.session import Database
+from securedb.errors import CryptoError
 
 
 @dataclass(frozen=True)
@@ -136,3 +137,23 @@ def rotate_master(db: Database, old: KeyProvider, new: KeyProvider, *, actor: Ac
                 outcome={"from_key_id": old.key_id, "to_key_id": new.key_id},
             )
     return len(tenants)
+
+
+def can_unwrap_all(db: Database, provider: KeyProvider) -> bool:
+    """True if `provider` unwraps every tenant's keys (read-only; used to resume rotations)."""
+    with db.session() as session:
+        tenants = session.scalars(select(Tenant).where(Tenant.wrapped_lookup_key.is_not(None)))
+        for tenant in tenants.all():
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant.id)},
+            )
+            try:
+                provider.unwrap(tenant.wrapped_lookup_key or b"", lookup_context(tenant.id))
+                for key in session.scalars(
+                    select(TenantKey).where(TenantKey.tenant_id == tenant.id)
+                ):
+                    provider.unwrap(key.wrapped_dek, dek_context(tenant.id, key.version))
+            except CryptoError:
+                return False
+    return True

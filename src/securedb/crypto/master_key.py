@@ -21,6 +21,8 @@ from securedb.errors import CryptoError
 
 KEYCHAIN_SERVICE = "securedb-vault"
 KEYCHAIN_USERNAME = "master-key"
+PENDING_USERNAME = "master-key.pending"  # staged during rotate-master
+PREVIOUS_USERNAME = "master-key.previous"  # kept after rotate-master for recovery
 FILE_FORMAT = "securedb-master-key"
 MIN_PASSPHRASE_LENGTH = 12
 # Upper bounds accepted when reading a key file (defaults are 3 / 64 MiB / 4).
@@ -80,11 +82,50 @@ def load_keychain_master_key() -> LocalKeyProvider:
         raise MasterKeyError("The OS keychain is unavailable.") from None
     if raw is None:
         raise MasterKeyError("No master key in the OS keychain. Run `securedb init`.")
+    return _provider_from_entry(raw)
+
+
+def _provider_from_entry(raw: str) -> LocalKeyProvider:
     try:
         entry = json.loads(raw)
         return LocalKeyProvider(_b64d(entry["key"]), key_id=str(entry["key_id"]))
     except (ValueError, KeyError, TypeError):
         raise MasterKeyError("The OS keychain entry for the master key is malformed.") from None
+
+
+def _new_entry() -> str:
+    return json.dumps({"key_id": new_key_id(), "key": _b64e(secrets.token_bytes(aead.KEY_SIZE))})
+
+
+def stage_keychain_master_key() -> LocalKeyProvider:
+    """Create (or reuse) the pending master key used by an in-progress rotation.
+
+    Saved *before* anything is re-wrapped, so a crash never leaves data wrapped under a
+    key that exists only in memory.
+    """
+    try:
+        raw = keyring.get_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
+        if raw is None:
+            raw = _new_entry()
+            keyring.set_password(KEYCHAIN_SERVICE, PENDING_USERNAME, raw)
+    except KeyringError:
+        raise MasterKeyError("The OS keychain is unavailable.") from None
+    return _provider_from_entry(raw)
+
+
+def promote_keychain_master_key() -> None:
+    """Finish a rotation: pending becomes current; the old key is kept as 'previous'."""
+    try:
+        pending = keyring.get_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
+        if pending is None:
+            raise MasterKeyError("No pending master key to promote.")
+        current = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+        if current is not None:
+            keyring.set_password(KEYCHAIN_SERVICE, PREVIOUS_USERNAME, current)
+        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, pending)
+        keyring.delete_password(KEYCHAIN_SERVICE, PENDING_USERNAME)
+    except KeyringError:
+        raise MasterKeyError("The OS keychain is unavailable.") from None
 
 
 # --- Passphrase file ---------------------------------------------------------
