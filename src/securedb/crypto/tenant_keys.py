@@ -72,6 +72,41 @@ class KeyRing:
         tenant.wrapped_lookup_key = self._provider.wrap(lookup_key, _lookup_context(tenant_id))
         session.flush()
 
+    def add_dek_version(self, session: Session, tenant_id: uuid.UUID) -> tuple[int, int]:
+        """Make a new DEK the active one; the previous active version becomes 'retiring'.
+
+        Returns (previous_version, new_version). Call in the tenant's session.
+        """
+        _require_tenant_context(session, tenant_id)
+        previous = session.scalar(
+            select(TenantKey).where(TenantKey.tenant_id == tenant_id, TenantKey.status == "active")
+        )
+        if previous is None:
+            raise NotFound("No active data key for this tenant.")
+        latest = session.scalar(
+            select(TenantKey.version)
+            .where(TenantKey.tenant_id == tenant_id)
+            .order_by(TenantKey.version.desc())
+            .limit(1)
+        )
+        new_version = (latest or 0) + 1
+        previous.status = "retiring"
+        session.flush()  # free the one-active-key slot before inserting the new key
+        session.add(
+            TenantKey(
+                tenant_id=tenant_id,
+                version=new_version,
+                wrapped_dek=self._provider.wrap(
+                    secrets.token_bytes(aead.KEY_SIZE), _dek_context(tenant_id, new_version)
+                ),
+                provider=self._provider.name,
+                provider_key_id=self._provider.key_id,
+                status="active",
+            )
+        )
+        session.flush()
+        return previous.version, new_version
+
     def active_dek(self, session: Session, tenant_id: uuid.UUID) -> DataKey:
         _require_tenant_context(session, tenant_id)
         version = session.scalar(

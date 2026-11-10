@@ -81,7 +81,7 @@ def test_status_values_are_constrained(
 
 
 @pytest.mark.parametrize(
-    "statement", ["UPDATE tenant_keys SET status = 'retired'", "DELETE FROM tenant_keys"]
+    "statement", ["UPDATE tenant_keys SET version = 2", "DELETE FROM tenant_keys"]
 )
 def test_app_role_cannot_modify_existing_keys(
     app_engine: Engine, two_tenants: tuple[uuid.UUID, uuid.UUID], statement: str
