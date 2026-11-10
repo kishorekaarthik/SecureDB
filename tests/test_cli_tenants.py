@@ -128,3 +128,17 @@ def test_verify_audit(wired: Database, owner_engine: Engine) -> None:
     code, output = _run("verify-audit", "--tenant", "acme")
     assert code == 2
     assert "BROKEN" in output and "seq 1" in output
+
+
+def test_verify_audit_with_anchor(wired: Database) -> None:
+    _run("create-tenant", "acme")
+    code, output = _run("verify-audit", "--tenant", "acme")
+    head = output.strip().rsplit(" ", 1)[1]
+    ok_code, _ = _run(
+        "verify-audit", "--tenant", "acme", "--anchor-seq", "1", "--anchor-hash", head
+    )
+    bad_code, bad_output = _run(
+        "verify-audit", "--tenant", "acme", "--anchor-seq", "1", "--anchor-hash", "0" * 64
+    )
+    assert (code, ok_code, bad_code) == (0, 0, 2)
+    assert "BROKEN at seq 1" in bad_output

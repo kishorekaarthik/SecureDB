@@ -142,3 +142,109 @@ def test_outcome_values_must_be_json_scalars_lists_or_dicts(
 ) -> None:
     with pytest.raises(TypeError):
         _append(db, tenant, outcome={"bad": object()})
+
+
+def test_verify_streams_rows_with_a_server_side_cursor(db: Database, tenant: uuid.UUID) -> None:
+    from sqlalchemy import event
+
+    _append(db, tenant)
+    streamed: list[bool] = []
+
+    def capture(conn, cursor, statement, params, context, executemany):  # type: ignore[no-untyped-def]
+        if "FROM audit_log" in statement and "ORDER BY audit_log.seq" in statement:
+            streamed.append(bool(context.execution_options.get("stream_results")))
+
+    event.listen(db.engine, "before_cursor_execute", capture)
+    try:
+        assert _verify(db, tenant).ok
+    finally:
+        event.remove(db.engine, "before_cursor_execute", capture)
+    assert streamed == [True]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [{"ratio": 0.5}, {"big": 1e16}, {"nan": float("nan")}, {"inf": float("inf")}, {1: "x"}],
+)
+def test_outcomes_reject_floats_and_non_string_keys(
+    db: Database, tenant: uuid.UUID, outcome: dict[object, object]
+) -> None:
+    with pytest.raises(TypeError):
+        _append(db, tenant, outcome=outcome)
+
+
+def test_jsonb_round_trip_keeps_the_chain_valid(db: Database, tenant: uuid.UUID) -> None:
+    _append(
+        db,
+        tenant,
+        outcome={
+            "big": 2**62,
+            "neg": -7,
+            "text": "नमस्ते ✓",
+            "nested": {"b": [1, {"a": None}], "a": True},
+        },
+    )
+    assert _verify(db, tenant).ok
+
+
+def test_verify_detects_reordered_rows(
+    db: Database, tenant: uuid.UUID, owner_engine: Engine
+) -> None:
+    for i in range(4):
+        _append(db, tenant, outcome={"n": i})
+    with owner_engine.begin() as conn:
+        set_tenant(conn, tenant)
+        conn.execute(text("UPDATE audit_log SET seq = -1 WHERE seq = 2"))
+        conn.execute(text("UPDATE audit_log SET seq = 2 WHERE seq = 3"))
+        conn.execute(text("UPDATE audit_log SET seq = 3 WHERE seq = -1"))
+    result = _verify(db, tenant)
+    assert (result.ok, result.first_broken_seq) == (False, 2)
+
+
+def test_tail_truncation_is_only_caught_by_an_anchor(
+    db: Database, tenant: uuid.UUID, owner_engine: Engine
+) -> None:
+    records = [_append(db, tenant, outcome={"n": i}) for i in range(4)]
+    with owner_engine.begin() as conn:
+        set_tenant(conn, tenant)
+        conn.execute(text("DELETE FROM audit_log WHERE seq = 4"))
+    plain = _verify(db, tenant)
+    assert (plain.ok, plain.entries) == (True, 3)  # known limit: a shorter chain still links
+    with db.tenant_session(tenant) as session:
+        anchored = verify(session, tenant, anchor_seq=4, anchor_hash=records[3].hash.hex())
+    assert anchored.ok is False and anchored.first_broken_seq == 4
+
+
+def test_full_rewrite_is_only_caught_by_an_anchor(
+    db: Database, tenant: uuid.UUID, owner_engine: Engine
+) -> None:
+    records = [_append(db, tenant, outcome={"n": i}) for i in range(3)]
+    # An insider with the owner role rewrites entry 2 and recomputes every later hash.
+    with db.tenant_session(tenant) as session:
+        rows = list_entries(session, tenant)
+    forged = AuditRecord(**{**rows[1].__dict__, "outcome": {"n": 99}})
+    new_hash = hashlib.sha256(rows[0].hash + canonical_entry(tenant, forged)).digest()
+    third = AuditRecord(**{**rows[2].__dict__, "prev_hash": new_hash})
+    third_hash = hashlib.sha256(new_hash + canonical_entry(tenant, third)).digest()
+    with owner_engine.begin() as conn:
+        set_tenant(conn, tenant)
+        conn.execute(
+            text("UPDATE audit_log SET outcome = '{\"n\": 99}', hash = :h WHERE seq = 2"),
+            {"h": new_hash},
+        )
+        conn.execute(
+            text("UPDATE audit_log SET prev_hash = :p, hash = :h WHERE seq = 3"),
+            {"p": new_hash, "h": third_hash},
+        )
+    assert _verify(db, tenant).ok  # the chain alone cannot tell
+    with db.tenant_session(tenant) as session:
+        anchored = verify(session, tenant, anchor_seq=3, anchor_hash=records[2].hash.hex())
+    assert anchored.ok is False and anchored.first_broken_seq == 3
+
+
+def test_anchor_beyond_the_log_is_reported(db: Database, tenant: uuid.UUID) -> None:
+    record = _append(db, tenant)
+    with db.tenant_session(tenant) as session:
+        assert verify(session, tenant, anchor_seq=1, anchor_hash=record.hash.hex()).ok
+        missing = verify(session, tenant, anchor_seq=5, anchor_hash=record.hash.hex())
+    assert missing.ok is False and missing.first_broken_seq == 2

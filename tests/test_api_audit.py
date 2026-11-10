@@ -109,3 +109,33 @@ def test_verify_reports_ok_and_breaks(
     broken = client.get("/v1/audit/verify", headers=headers).json()
     assert (broken["ok"], broken["entries"], broken["first_broken_seq"]) == (False, 1, 2)
     assert len(broken["head_hash"]) == 64  # hash of the last intact entry
+
+
+def test_verify_accepts_an_external_anchor(ctx: tuple[TestClient, Database, uuid.UUID]) -> None:
+    client, db, tenant = ctx
+    headers = _key(db, tenant, Scope.audit_read)
+    head = client.get("/v1/audit/verify", headers=headers).json()
+    good = {"anchor_seq": head["entries"], "anchor_hash": head["head_hash"]}
+    assert client.get("/v1/audit/verify", params=good, headers=headers).json()["ok"] is True
+    bad = {"anchor_seq": head["entries"], "anchor_hash": "0" * 64}
+    result = client.get("/v1/audit/verify", params=bad, headers=headers).json()
+    assert (result["ok"], result["first_broken_seq"]) == (False, head["entries"])
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"anchor_seq": 1},
+        {"anchor_hash": "0" * 64},
+        {"anchor_seq": 0, "anchor_hash": "0" * 64},
+        {"anchor_seq": 1, "anchor_hash": "XYZ"},
+    ],
+)
+def test_anchor_parameters_are_validated(
+    ctx: tuple[TestClient, Database, uuid.UUID], params: dict[str, object]
+) -> None:
+    client, db, tenant = ctx
+    response = client.get(
+        "/v1/audit/verify", params=params, headers=_key(db, tenant, Scope.audit_read)
+    )
+    assert response.status_code == 422

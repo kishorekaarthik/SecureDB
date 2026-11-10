@@ -5,8 +5,15 @@ from 32 zero bytes. Appends serialise per tenant with a transaction-scoped advis
 and the application role can only INSERT and SELECT, so history cannot be rewritten by
 the app. ``verify`` recomputes the chain and reports the first broken sequence number.
 
-Known limit: deleting the *newest* entries leaves a shorter but valid chain. Operators
-should record ``head_hash`` externally (e.g. daily) to detect truncation.
+What the chain proves: an edit, deletion or reordering of entries made by anyone who
+cannot also rewrite every later hash. It is an *unkeyed* SHA-256 chain, so two things are
+only detectable against an anchor kept outside the database:
+
+* truncation of the newest entries (the shorter chain still links), and
+* a full rewrite by someone with the table-owner role (who can recompute every hash).
+
+Operators should periodically record ``(entries, head_hash)`` from ``verify`` somewhere
+the database owner cannot change, and pass it back as ``anchor_seq``/``anchor_hash``.
 """
 
 import hashlib
@@ -109,6 +116,25 @@ def _record(row: AuditLog) -> AuditRecord:
     )
 
 
+def _check_outcome(value: Any) -> None:
+    """Outcomes must survive a JSONB round trip byte-for-byte, or verify would report
+    tampering: only strings, ints, bools, None, lists and string-keyed dicts. Floats are
+    refused because PostgreSQL re-renders them (1e16 comes back as 10000000000000000)."""
+    if value is None or isinstance(value, str | bool | int):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _check_outcome(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("audit outcome keys must be strings")
+            _check_outcome(item)
+        return
+    raise TypeError(f"audit outcome values cannot be {type(value).__name__}")
+
+
 def append(
     session: Session,
     tenant_id: uuid.UUID,
@@ -120,7 +146,7 @@ def append(
 ) -> AuditRecord:
     """Append one entry in the caller's transaction (it commits or rolls back with it)."""
     outcome = outcome or {}
-    json.dumps(outcome)  # TypeError for anything that is not plain JSON data
+    _check_outcome(outcome)
     session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _lock_key(tenant_id)})
     head = session.execute(
         select(AuditLog.seq, AuditLog.hash)
@@ -163,12 +189,28 @@ def append(
     return record
 
 
-def verify(session: Session, tenant_id: uuid.UUID) -> VerifyResult:
-    """Recompute the whole chain; report the first sequence number that does not check out."""
+def verify(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    anchor_seq: int | None = None,
+    anchor_hash: str | None = None,
+) -> VerifyResult:
+    """Recompute the whole chain; report the first sequence number that does not check out.
+
+    With an anchor (a ``(seq, hash)`` pair recorded earlier outside the database), also
+    fail if that entry is missing or its hash changed: this is what detects truncation
+    of the newest entries and a full rewrite by someone with the table-owner role.
+    """
     expected_seq, prev_hash, count = 1, GENESIS_HASH, 0
-    rows = session.scalars(
-        select(AuditLog).where(AuditLog.tenant_id == tenant_id).order_by(AuditLog.seq)
-    ).yield_per(1000)
+    query = select(AuditLog).where(AuditLog.tenant_id == tenant_id).order_by(AuditLog.seq)
+    # yield_per as an *execution option* streams through a server-side cursor; applied
+    # to the result afterwards it would still buffer every row in the driver.
+    rows = session.scalars(query, execution_options={"yield_per": 1000})
+
+    def broken(seq: int) -> VerifyResult:
+        return VerifyResult(False, count, prev_hash.hex() if count else None, seq)
+
     for row in rows:
         record = _record(row)
         if (
@@ -176,8 +218,12 @@ def verify(session: Session, tenant_id: uuid.UUID) -> VerifyResult:
             or record.prev_hash != prev_hash
             or record.hash != _chain(prev_hash, tenant_id, record)
         ):
-            return VerifyResult(False, count, prev_hash.hex() if count else None, expected_seq)
+            return broken(expected_seq)
+        if record.seq == anchor_seq and record.hash.hex() != anchor_hash:
+            return broken(record.seq)
         prev_hash, expected_seq, count = record.hash, expected_seq + 1, count + 1
+    if anchor_seq is not None and count < anchor_seq:
+        return broken(count + 1)
     return VerifyResult(True, count, prev_hash.hex() if count else None, None)
 
 

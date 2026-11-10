@@ -9,6 +9,7 @@ from pydantic import AwareDatetime, BaseModel
 from securedb.api.auth import require
 from securedb.audit.log import AuditRecord, list_entries, verify
 from securedb.db.session import Database
+from securedb.errors import UnprocessableEntity
 from securedb.tenants.api_keys import AuthenticatedKey, Scope
 
 router = APIRouter(prefix="/v1/audit", tags=["audit"])
@@ -65,7 +66,7 @@ def _db(request: Request) -> Database:
 def list_audit(
     request: Request,
     key: AuditReader,
-    cursor: Annotated[int, Query(ge=0, description="Return entries after this seq.")] = 0,
+    cursor: Annotated[int, Query(ge=0, le=2**62, description="Return entries after this seq.")] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     action: Annotated[str | None, Query(max_length=64, pattern=r"^[a-z._]+$")] = None,
     since: Annotated[AwareDatetime | None, Query(alias="from")] = None,
@@ -86,9 +87,18 @@ def list_audit(
 
 
 @router.get("/verify", response_model=VerifyOut)
-def verify_audit(request: Request, key: AuditReader) -> VerifyOut:
+def verify_audit(
+    request: Request,
+    key: AuditReader,
+    anchor_seq: Annotated[int | None, Query(ge=1, le=2**62)] = None,
+    anchor_hash: Annotated[str | None, Query(pattern=r"^[0-9a-f]{64}$")] = None,
+) -> VerifyOut:
+    """Recompute the chain. Pass an anchor recorded earlier outside the database to also
+    detect truncation of recent entries or a full rewrite by the table owner."""
+    if (anchor_seq is None) != (anchor_hash is None):
+        raise UnprocessableEntity("anchor_seq and anchor_hash must be given together.")
     with _db(request).tenant_session(key.tenant_id) as session:
-        result = verify(session, key.tenant_id)
+        result = verify(session, key.tenant_id, anchor_seq=anchor_seq, anchor_hash=anchor_hash)
     return VerifyOut(
         ok=result.ok,
         entries=result.entries,

@@ -191,19 +191,35 @@ def init(
 
 
 @app.command("verify-audit")
-def verify_audit_command(tenant: TenantOption) -> None:
-    """Recompute a tenant's audit hash chain. Exits 2 if it is broken."""
+def verify_audit_command(
+    tenant: TenantOption,
+    anchor_seq: Annotated[
+        int | None, typer.Option(min=1, help="Seq of a head you recorded earlier.")
+    ] = None,
+    anchor_hash: Annotated[
+        str | None, typer.Option(help="The head_hash you recorded for --anchor-seq.")
+    ] = None,
+) -> None:
+    """Recompute a tenant's audit hash chain. Exits 2 if it is broken.
+
+    An anchor (seq + hash recorded outside the database) also detects truncation of the
+    newest entries and a full rewrite by someone with the table-owner role.
+    """
+    if (anchor_seq is None) != (anchor_hash is None):
+        typer.echo("Error: --anchor-seq and --anchor-hash must be given together.", err=True)
+        raise typer.Exit(code=1)
 
     def run(db: Database, _provider: KeyProvider) -> None:
         tenant_id = find_tenant_id(db, tenant)
         with db.tenant_session(tenant_id) as session:
-            result = verify(session, tenant_id)
+            result = verify(session, tenant_id, anchor_seq=anchor_seq, anchor_hash=anchor_hash)
         if result.ok:
             typer.echo(f"OK: {result.entries} entries, head {result.head_hash}")
             return
         typer.echo(
             f"BROKEN at seq {result.first_broken_seq} "
-            f"(first {result.entries} entries intact, head {result.head_hash})"
+            f"(first {result.entries} entries intact, head {result.head_hash})",
+            err=True,
         )
         raise typer.Exit(code=2)
 
