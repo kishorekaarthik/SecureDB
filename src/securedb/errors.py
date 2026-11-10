@@ -47,6 +47,11 @@ class Forbidden(DomainError):
     title = "Forbidden"
 
 
+class Conflict(DomainError):
+    status_code = 409
+    title = "Conflict"
+
+
 class UnprocessableEntity(DomainError):
     status_code = 422
     title = "Unprocessable Content"
