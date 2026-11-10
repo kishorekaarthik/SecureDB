@@ -7,5 +7,5 @@ useDefault = true
 [[allowlists]]
 description = "Example vault tokens (tok_<type>_...) in tests and docs: opaque references, not secrets"
 condition = "AND"
-regexes = ['''^tok_[a-z]+_[A-Za-z0-9]+$''']
+regexes = ['''^tok_[a-z_]+_[A-Za-z0-9]+$''']
 paths = ['''^tests/''', '''^docs/''']
