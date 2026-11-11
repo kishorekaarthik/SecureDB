@@ -59,6 +59,7 @@ def create_app(
     app.state.tokens = TokenService(app.state.keyring)
     app.state.subjects = SubjectService(app.state.keyring)
     app.state.rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
+    app.state.login_limiter = FixedWindowRateLimiter(settings.login_attempts_per_minute)
     app.state.readiness_checks = readiness_checks
 
     # Added first = innermost: errors are caught inside RequestIdMiddleware.

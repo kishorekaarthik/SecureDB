@@ -138,3 +138,27 @@ def revoke_api_key(session: Session, key_id: uuid.UUID, *, actor: Actor) -> None
         "api_key.revoke",
         outcome={"key_id": str(key_id)},
     )
+
+
+def update_api_key_scopes(
+    session: Session, key_id: uuid.UUID, scopes: Iterable[Scope], *, actor: Actor
+) -> None:
+    """Replace a key's scopes. Call in the owning tenant's session (others get NotFound)."""
+    new_scopes = sorted({scope.value for scope in scopes})
+    if not new_scopes:
+        raise ValueError("Choose at least one scope.")
+    tenant_id = session.scalar(
+        update(ApiKey)
+        .where(ApiKey.id == key_id, ApiKey.revoked_at.is_(None))
+        .values(scopes=new_scopes)
+        .returning(ApiKey.tenant_id)
+    )
+    if tenant_id is None:
+        raise NotFound("API key not found.")
+    append(
+        session,
+        tenant_id,
+        actor,
+        "api_key.update_scopes",
+        outcome={"key_id": str(key_id), "scopes": new_scopes},
+    )

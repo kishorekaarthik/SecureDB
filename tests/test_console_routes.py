@@ -402,3 +402,62 @@ def test_console_uses_no_scripts_or_inline_styles(console: Console) -> None:
         assert "<script" not in page and "style=" not in page and "onclick" not in page, path
     css = console.client.get("/console/static/console.css")
     assert css.status_code == 200 and css.headers["content-type"].startswith("text/css")
+
+
+def test_login_attempts_are_throttled(console: Console) -> None:
+    token = console.csrf("/console/login")
+    form = {
+        "tenant": "acme",
+        "email": "owner@example.com",
+        "password": "nope nope nope",
+        "csrf_token": token,
+    }
+    statuses = [console.client.post("/console/login", data=form).status_code for _ in range(12)]
+    assert statuses[:4] == [401] * 4
+    assert statuses[-1] == 429
+
+
+def test_owner_can_edit_a_keys_scopes(console: Console) -> None:
+    console.login()
+    plaintext = _create_key(console)
+    key_id = _key_id(console, plaintext)
+    response = console.post(
+        f"/console/keys/{key_id}/scopes", "/console/keys", scopes=["audit:read"]
+    )
+    assert response.status_code == 303
+    assert authenticate(console.db, f"Bearer {plaintext}").scopes == frozenset({"audit:read"})
+    entry = console.audit()[-1]
+    assert (entry.action, entry.actor_type) == ("api_key.update_scopes", "console_user")
+    assert entry.outcome == {"key_id": str(key_id), "scopes": ["audit:read"]}
+    empty = console.post(f"/console/keys/{key_id}/scopes", "/console/keys")
+    assert empty.status_code == 200 and "at least one scope" in empty.text
+
+
+def test_playground_respects_the_keys_scopes(console: Console) -> None:
+    console.login()
+    key_id = _key_id(console, _create_key(console, "tokenize-only", "tokenize"))
+    _allow(console, key_id, "pan", "tokenize", "allow")
+    _allow(console, key_id, "pan", "detokenize", "allow")
+    made = console.post(
+        "/console/playground/tokenize",
+        "/console/playground",
+        key_id=str(key_id),
+        type="pan",
+        value=PAN,
+    )
+    match = TOKEN.search(made.text)
+    assert match is not None
+    shown = console.post(
+        "/console/playground/detokenize", "/console/playground",
+        key_id=str(key_id), token=match.group(0),
+    )  # fmt: skip
+    assert "lacks the &#39;detokenize&#39; scope" in shown.text
+    assert PAN not in shown.text
+    last = console.audit()[-1]
+    assert (last.action, last.outcome["reason"]) == ("detokenize.rejected", "scope")
+
+
+def test_non_ascii_csrf_token_is_a_403(console: Console) -> None:
+    console.login()
+    response = console.client.post("/console/keys", data={"name": "x", "csrf_token": "١٢٣"})
+    assert response.status_code == 403

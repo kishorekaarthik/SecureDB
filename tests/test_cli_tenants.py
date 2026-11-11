@@ -168,3 +168,20 @@ def test_create_user_rejects_a_short_password(wired: Database) -> None:
     )
     assert result.exit_code == 1
     assert "at least 12" in result.output
+
+
+def test_unlock_user(wired: Database) -> None:
+    from securedb.console import auth
+
+    _run("create-tenant", "acme")
+    runner.invoke(
+        cli.app,
+        ["create-user", "--tenant", "acme", "--email", "a@b.co", "--role", "owner"],
+        input="correct horse battery staple\ncorrect horse battery staple\n",
+    )
+    for _ in range(5):
+        auth.check_password(wired, "acme", "a@b.co", "wrong wrong wrong")
+    assert auth.check_password(wired, "acme", "a@b.co", "correct horse battery staple") is None
+    code, output = _run("unlock-user", "--tenant", "acme", "--email", "a@b.co")
+    assert code == 0, output
+    assert auth.check_password(wired, "acme", "a@b.co", "correct horse battery staple")

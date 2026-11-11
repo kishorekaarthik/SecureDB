@@ -14,7 +14,7 @@ from sqlalchemy import select
 from securedb import __version__
 from securedb.audit.log import Actor, verify
 from securedb.config import get_settings
-from securedb.console.auth import create_console_user
+from securedb.console.auth import create_console_user, unlock_console_user
 from securedb.crypto.master_key import (
     MasterKeyError,
     init_file_master_key,
@@ -336,5 +336,21 @@ def create_user_command(
         typer.echo(f"Created console user {email.strip().lower()} ({role.value}).")
         typer.echo("Add this to an authenticator app now; it is not shown again:")
         typer.echo(uri)
+
+    _with_database(run)
+
+
+@app.command("unlock-user")
+def unlock_user_command(
+    tenant: TenantOption,
+    email: Annotated[str, typer.Option(help="The locked user's e-mail address.")],
+) -> None:
+    """Clear a console user's lockout (after too many failed sign-ins)."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            unlock_console_user(session, tenant_id, email, actor=Actor.system("cli"))
+        typer.echo(f"Unlocked {email.strip().lower()}.")
 
     _with_database(run)

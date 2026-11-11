@@ -2,7 +2,9 @@
 
 * Passwords are hashed with argon2id. Unknown tenants/users still run a hash, so timing
   does not reveal which accounts exist; every failure looks the same to the caller.
-* Five failures (password or TOTP) lock the account for 15 minutes.
+* Five failures (password or TOTP) lock the account for 15 minutes. Anyone who knows
+  a tenant and e-mail can therefore keep that account locked; operators recover it
+  with `securedb unlock-user`. Login attempts are also rate limited per client.
 * TOTP secrets are encrypted with the tenant DEK; a code cannot be reused.
 * Sessions: the cookie holds a random 256-bit value, the database only its SHA-256.
   8 hours absolute lifetime, 30 minutes idle timeout.
@@ -27,7 +29,7 @@ from securedb.crypto.tenant_keys import KeyRing
 from securedb.crypto.values import EncryptedValue, ValueCipher
 from securedb.db.models import ConsoleSession, ConsoleUser, Tenant
 from securedb.db.session import Database
-from securedb.errors import Conflict
+from securedb.errors import Conflict, NotFound
 
 MIN_PASSWORD_LENGTH = 12
 MAX_FAILED_LOGINS = 5
@@ -162,33 +164,49 @@ def _password_ok(stored_hash: str, password: str) -> bool:
 def check_password(
     db: Database, tenant_name: str, email: str, password: str
 ) -> ConsoleUserInfo | None:
-    """First login step. None for every kind of failure (the caller cannot tell why)."""
+    """First login step. None for every kind of failure (the caller cannot tell why).
+
+    The (slow, memory-hungry) password hash runs with no database connection held, so a
+    flood of login attempts cannot exhaust the connection pool.
+    """
     with db.session() as session:
         tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == tenant_name.strip()))
-    if tenant_id is None:
-        _password_ok(_DUMMY_HASH, password)
+    stored: tuple[uuid.UUID, str] | None = None
+    if tenant_id is not None:
+        with db.tenant_session(tenant_id) as session:
+            row = session.execute(
+                select(ConsoleUser.id, ConsoleUser.password_hash).where(
+                    ConsoleUser.email == email.strip().lower()
+                )
+            ).one_or_none()
+            stored = (row.id, row.password_hash) if row else None
+    correct = _password_ok(stored[1] if stored else _DUMMY_HASH, password)
+    if tenant_id is None or stored is None:
         return None
     with db.tenant_session(tenant_id) as session:
         user = session.scalar(
-            select(ConsoleUser).where(ConsoleUser.email == email.strip().lower()).with_for_update()
+            select(ConsoleUser).where(ConsoleUser.id == stored[0]).with_for_update()
         )
-        if user is None:
-            _password_ok(_DUMMY_HASH, password)
-            return None
-        correct = _password_ok(user.password_hash, password)
-        if _is_locked(session, user):
-            append(
-                session,
-                tenant_id,
-                Actor.console_user(user.id),
-                "console.login_failed",
-                outcome={"reason": "locked", "locked": True},
-            )
-            return None
+        if user is None or _is_locked(session, user):
+            return None  # the lock itself was audited when it started
         if not correct:
             _fail(session, user, "password")
             return None
         return _info(user)
+
+
+def unlock_console_user(
+    session: Session, tenant_id: uuid.UUID, email: str, *, actor: Actor
+) -> None:
+    """Operator recovery for a locked-out user. Call in the tenant's session."""
+    user = session.scalar(
+        select(ConsoleUser).where(ConsoleUser.email == email.strip().lower()).with_for_update()
+    )
+    if user is None:
+        raise NotFound("Console user not found.")
+    user.failed_logins = 0
+    user.locked_until = None
+    append(session, tenant_id, actor, "console_user.unlock", outcome={"user_id": str(user.id)})
 
 
 def _matching_step(secret: str, code: str, now: datetime) -> int | None:
@@ -216,7 +234,7 @@ def check_totp(db: Database, keyring: KeyRing, user: ConsoleUserInfo, code: str)
         )
         step = (
             _matching_step(secret, code, _now(session))
-            if len(code) == 6 and code.isdigit()
+            if len(code) == 6 and code.isascii() and code.isdigit()
             else None
         )
         if step is None or step <= (row.last_totp_step or 0):

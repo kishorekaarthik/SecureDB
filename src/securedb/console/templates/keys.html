@@ -41,6 +41,13 @@
     <label>Effect <select name="effect"><option>allow</option><option>mask</option><option>deny</option></select></label>
     <button type="submit">Set policy</button>
   </form>
+  <form method="post" action="/console/keys/{{ key.id }}/scopes" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset><legend>Scopes</legend>
+      {% for scope in scopes %}<label class="check"><input type="checkbox" name="scopes" value="{{ scope }}"{% if scope in key.scopes %} checked{% endif %}> <code>{{ scope }}</code></label>{% endfor %}
+    </fieldset>
+    <button type="submit" class="quiet">Update scopes</button>
+  </form>
   <form method="post" action="/console/keys/{{ key.id }}/revoke">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="danger">Revoke key</button>

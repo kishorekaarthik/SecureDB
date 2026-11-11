@@ -251,3 +251,50 @@ def test_sessions_are_invisible_without_the_cookie_hash(world: World, app_engine
     with app_engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM console_sessions")).scalar_one() == 0
         assert conn.execute(text("SELECT count(*) FROM console_users")).scalar_one() == 0
+
+
+def test_attempts_on_a_locked_account_are_not_audited_again(world: World) -> None:
+    for _ in range(9):
+        _login(world, "wrong password here")
+    with world.db.tenant_session(world.tenant) as session:
+        failures = [
+            e
+            for e in list_entries(session, world.tenant, limit=200)
+            if e.action == "console.login_failed"
+        ]
+    assert len(failures) == 5
+    assert failures[-1].outcome == {"reason": "password", "locked": True}
+
+
+def test_operator_can_unlock_an_account(world: World) -> None:
+    for _ in range(5):
+        _login(world, "wrong password here")
+    assert _login(world) is None
+    with world.db.tenant_session(world.tenant) as session:
+        auth.unlock_console_user(session, world.tenant, "Admin@Example.com", actor=TEST)
+        last = list_entries(session, world.tenant, limit=200)[-1]
+    assert (last.action, last.outcome) == ("console_user.unlock", {"user_id": str(world.user_id)})
+    assert _login(world) is not None
+
+
+def test_non_ascii_digits_are_rejected_not_crashed(world: World) -> None:
+    info = _login(world)
+    assert info is not None
+    assert auth.check_totp(world.db, world.keyring, info, "١٢٣٤٥٦") is False
+
+
+def test_password_hashing_happens_outside_database_transactions(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    in_transaction: list[bool] = []
+    original = auth._password_ok
+
+    def spy(stored: str, password: str) -> bool:
+        in_transaction.append(world.db.engine.pool.checkedout() > 0)
+        return original(stored, password)
+
+    monkeypatch.setattr(auth, "_password_ok", spy)
+    _login(world)
+    _login(world, "wrong password here")
+    auth.check_password(world.db, "acme", "nobody@example.com", PASSWORD)
+    assert in_transaction == [False, False, False]

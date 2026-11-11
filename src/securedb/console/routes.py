@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from jinja2 import Environment, PackageLoader, select_autoescape
 from sqlalchemy import func, select
 
+from securedb.api.ratelimit import FixedWindowRateLimiter
 from securedb.audit.log import append, verify
 from securedb.console import auth
 from securedb.console.auth import SessionInfo
@@ -19,7 +20,13 @@ from securedb.db.models import ApiKey, AuditLog, Policy, Tenant, TenantKey, Toke
 from securedb.db.session import Database
 from securedb.errors import DomainError, Forbidden, NotFound, UnprocessableEntity
 from securedb.policy.engine import Action, Effect, set_policy
-from securedb.tenants.api_keys import AuthenticatedKey, Scope, issue_api_key, revoke_api_key
+from securedb.tenants.api_keys import (
+    AuthenticatedKey,
+    Scope,
+    issue_api_key,
+    revoke_api_key,
+    update_api_key_scopes,
+)
 from securedb.vault.fields import FieldType
 from securedb.vault.service import DetokenizeResult, TokenizeItem, TokenService
 
@@ -30,6 +37,7 @@ AUDIT_PAGE_SIZE = 50
 MESSAGES = {
     "revoked": "API key revoked.",
     "policy": "Policy updated.",
+    "scopes": "Scopes updated.",
     "rotated": "A new data key is active. Re-encrypt to move existing values.",
     "reencrypted": "Re-encryption finished.",
 }
@@ -73,7 +81,11 @@ def _redirect(path: str) -> RedirectResponse:
 
 
 def _check_csrf(expected: str | None, submitted: str) -> None:
-    if not expected or not submitted or not hmac.compare_digest(expected, submitted):
+    if (
+        not expected
+        or not submitted
+        or not hmac.compare_digest(expected.encode(), submitted.encode())
+    ):
         raise Forbidden("Missing or invalid CSRF token.")
 
 
@@ -142,6 +154,10 @@ def login(
 ) -> Response:
     expected = request.cookies.get(PRE_LOGIN_COOKIE)
     _check_csrf(expected, csrf_token)
+    # Throttle before any password hashing: per client and per account.
+    limiter: FixedWindowRateLimiter = request.app.state.login_limiter
+    limiter.hit(f"ip:{request.client.host if request.client else 'unknown'}")
+    limiter.hit(f"user:{tenant.strip()}|{email.strip().lower()}")
     user = auth.check_password(_db(request), tenant, email, password)
     if user is None:
         return _page("login.html", request, status=401, csrf_token=expected, error=LOGIN_ERROR)
@@ -265,6 +281,21 @@ def revoke_key(request: Request, info: OwnerAction, key_id: uuid.UUID) -> Respon
     with _db(request).tenant_session(info.user.tenant_id) as session:
         revoke_api_key(session, key_id, actor=info.user.actor)
     return _redirect("/console/keys?msg=revoked")
+
+
+@router.post("/keys/{key_id}/scopes")
+def change_scopes(
+    request: Request,
+    info: OwnerAction,
+    key_id: uuid.UUID,
+    scopes: Annotated[list[Scope], Form(default_factory=list)],
+) -> Response:
+    try:
+        with _db(request).tenant_session(info.user.tenant_id) as session:
+            update_api_key_scopes(session, key_id, scopes, actor=info.user.actor)
+    except ValueError as exc:
+        return _keys_page(request, info, error=str(exc))
+    return _redirect("/console/keys?msg=scopes")
 
 
 @router.post("/keys/{key_id}/policy")
@@ -399,6 +430,8 @@ def playground_tokenize(
     raw: Any = {"account_number": value, "ifsc": ifsc} if type is FieldType.bank_account else value
     try:
         key = _acting_key(request, info, key_id)
+        if not key.allows(Scope.tokenize):  # same gate the API applies
+            raise Forbidden("This API key lacks the 'tokenize' scope.")
         with db.tenant_session(tenant_id) as session:
             [result] = service.tokenize(
                 session,
@@ -435,6 +468,17 @@ def playground_detokenize(
     service: TokenService = request.app.state.tokens
     try:
         key = _acting_key(request, info, key_id)
+        if not key.allows(Scope.detokenize):  # same gate the API applies
+            with _db(request).tenant_session(info.user.tenant_id) as session:
+                append(
+                    session,
+                    info.user.tenant_id,
+                    info.user.actor,
+                    "detokenize.rejected",
+                    token_ids=[token],
+                    outcome={"reason": "scope", "via_key": str(key_id)},
+                )
+            return _playground(request, info, error="This API key lacks the 'detokenize' scope.")
         with _db(request).tenant_session(info.user.tenant_id) as session:
             results: list[DetokenizeResult] = service.detokenize(
                 session, key, [token], actor=info.user.actor
