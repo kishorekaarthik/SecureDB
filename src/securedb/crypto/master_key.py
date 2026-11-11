@@ -14,7 +14,7 @@ from argon2.low_level import Type, hash_secret_raw
 from keyring.errors import KeyringError
 
 from securedb.config import Settings
-from securedb.crypto import aead
+from securedb.crypto import aead, kms
 from securedb.crypto.local import LocalKeyProvider, LockedKeyProvider
 from securedb.crypto.provider import KeyProvider
 from securedb.errors import CryptoError
@@ -248,6 +248,14 @@ def load_key_provider(settings: Settings) -> KeyProvider:
     try:
         if settings.master_key_store == "keychain":
             return load_keychain_master_key()
+        if settings.master_key_store == "kms":
+            if not settings.kms_key_id:
+                raise MasterKeyError("SECUREDB_KMS_KEY_ID is not set.")
+            try:
+                client = kms.default_client(settings.kms_region)
+            except kms.KmsUnavailable as exc:
+                raise MasterKeyError(str(exc)) from None
+            return kms.AwsKmsKeyProvider(settings.kms_key_id, client=client)
         if settings.master_key_passphrase is None:
             raise MasterKeyError("SECUREDB_MASTER_KEY_PASSPHRASE is not set.")
         return load_file_master_key(
