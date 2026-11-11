@@ -15,7 +15,7 @@ from securedb.vault.service import TokenizeItem, TokenService
 
 router = APIRouter(prefix="/v1/tokens", tags=["tokens"])
 
-TOKEN_PATTERN = r"^tok_[a-z_]+_[A-Za-z0-9]{22}$"  # noqa: S105 - a regex, not a secret
+TOKEN_PATTERN = r"^tok_[a-z_]+_[A-Za-z0-9]{22}$"  # noqa: S105  # nosec B105
 SUBJECT_PATTERN = r"^[A-Za-z0-9._:@-]{1,128}$"
 TokenStr = Annotated[str, Field(max_length=64, pattern=TOKEN_PATTERN)]
 ValueStr = Annotated[str, Field(max_length=4096)]

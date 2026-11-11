@@ -110,7 +110,7 @@ def owner_page(info: Annotated[SessionInfo, Depends(signed_in)]) -> SessionInfo:
     return info
 
 
-def posted(
+def posted(  # nosec B107
     info: Annotated[SessionInfo, Depends(signed_in)], csrf_token: Annotated[str, Form()] = ""
 ) -> SessionInfo:
     _check_csrf(info.csrf_token, csrf_token)
@@ -145,7 +145,7 @@ def login_form(request: Request) -> HTMLResponse:
 
 
 @router.post("/login")
-def login(
+def login(  # nosec B107
     request: Request,
     tenant: Annotated[str, Form(max_length=200)] = "",
     email: Annotated[str, Form(max_length=254)] = "",
@@ -179,7 +179,7 @@ def totp_form(request: Request) -> HTMLResponse:
 
 
 @router.post("/login/totp")
-def totp(
+def totp(  # nosec B107
     request: Request,
     code: Annotated[str, Form(max_length=16)] = "",
     csrf_token: Annotated[str, Form()] = "",

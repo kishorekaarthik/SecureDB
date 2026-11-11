@@ -50,8 +50,8 @@ jobs:
         run: uv run mypy
       - name: Test
         run: uv run pytest --cov --cov-report=term-missing
-      - name: Coverage gate (crypto >= 90%)
-        run: uv run python -m coverage report --include="src/securedb/crypto/*" --fail-under=90
+      - name: Coverage gate (crypto, vault, policy, audit >= 90%)
+        run: uv run python -m coverage report --include="src/securedb/crypto/*,src/securedb/vault/*,src/securedb/policy/*,src/securedb/audit/*" --fail-under=90
       - name: Security lint
         run: uv run python -m bandit -q -r src
       - name: Dependency audit
