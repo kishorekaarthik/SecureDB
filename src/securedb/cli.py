@@ -28,6 +28,7 @@ from securedb.crypto.rotation import reencrypt, rotate_dek, rotate_master
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import ApiKey
 from securedb.db.session import Database
+from securedb.demo import seed_demo
 from securedb.errors import DomainError, KeyProviderLocked, NotFound
 from securedb.policy.engine import Action, Effect, set_policy
 from securedb.tenants.api_keys import Scope, issue_api_key, revoke_api_key
@@ -352,5 +353,26 @@ def unlock_user_command(
         with db.tenant_session(tenant_id) as session:
             unlock_console_user(session, tenant_id, email, actor=Actor.system("cli"))
         typer.echo(f"Unlocked {email.strip().lower()}.")
+
+    _with_database(run)
+
+
+@app.command("seed-demo")
+def seed_demo_command() -> None:
+    """Create two demo tenants with fake sample data, API keys and a console owner each."""
+    password: str = typer.prompt(
+        "Password for the demo console users", hide_input=True, confirmation_prompt=True
+    )
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        result = seed_demo(db, KeyRing(_unlocked(provider)), password)
+        for tenant in result.tenants:
+            typer.echo(f"\nTenant {tenant.name}")
+            typer.echo(f"  backend key (full values):   {tenant.backend_key}")
+            typer.echo(f"  support key (masked values): {tenant.support_key}")
+            typer.echo(f"  console sign-in: {tenant.console_email}")
+            typer.echo(f"  authenticator setup (shown once): {tenant.totp_uri}")
+            typer.echo(f"  sample token: {tenant.sample_tokens[0]}")
+        typer.echo("\nStart the server with `securedb serve`, then open /console or /docs.")
 
     _with_database(run)
