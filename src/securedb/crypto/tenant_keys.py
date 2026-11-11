@@ -1,0 +1,159 @@
+"""Per-tenant data keys (DEKs) and lookup keys, wrapped by the master key."""
+
+import secrets
+import uuid
+from dataclasses import dataclass, field
+
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from securedb.crypto import aead
+from securedb.crypto.provider import KeyProvider
+from securedb.db.models import Tenant, TenantKey
+from securedb.errors import NotFound
+
+
+@dataclass(frozen=True)
+class DataKey:
+    version: int
+    key: bytes = field(repr=False)
+
+
+def dek_context(tenant_id: uuid.UUID, version: int) -> dict[str, str]:
+    return {"purpose": "dek", "tenant_id": str(tenant_id), "version": str(version)}
+
+
+def lookup_context(tenant_id: uuid.UUID) -> dict[str, str]:
+    return {"purpose": "lookup", "tenant_id": str(tenant_id)}
+
+
+# One advisory lock guards wrapped-key creation against master-key rotation:
+# creating keys takes it shared, rotate_master takes it exclusive.
+KEY_MANAGEMENT_LOCK = 0x5ECDB0000001
+_LOCK_SHARED = text("SELECT pg_advisory_xact_lock_shared(:key)")
+_LOCK_EXCLUSIVE = text("SELECT pg_advisory_xact_lock(:key)")
+
+
+def lock_key_management(session: Session, *, exclusive: bool) -> None:
+    """Held until the transaction ends."""
+    session.execute(_LOCK_EXCLUSIVE if exclusive else _LOCK_SHARED, {"key": KEY_MANAGEMENT_LOCK})
+
+
+def _require_tenant_context(session: Session, tenant_id: uuid.UUID) -> None:
+    """Refuse to hand out a tenant's keys outside that tenant's database context.
+
+    Row-level security only guards database reads; this check also covers cache hits
+    and the lookup key (stored on `tenants`, which has no RLS).
+    """
+    current = session.scalar(text("SELECT current_setting('app.tenant_id', true)"))
+    if current != str(tenant_id):
+        raise NotFound("Tenant key not found.")
+
+
+class KeyRing:
+    """Creates, unwraps and caches tenant keys.
+
+    Every call must use Database.tenant_session(tenant_id) for the same tenant;
+    any other context (none, or another tenant's) yields NotFound, cached or not.
+    """
+
+    def __init__(self, provider: KeyProvider) -> None:
+        self._provider = provider
+        self._deks: dict[tuple[uuid.UUID, int], bytes] = {}
+        self._lookup_keys: dict[uuid.UUID, bytes] = {}
+
+    def create_tenant_keys(self, session: Session, tenant_id: uuid.UUID) -> None:
+        _require_tenant_context(session, tenant_id)
+        lock_key_management(session, exclusive=False)
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None:
+            raise NotFound("Tenant not found.")
+        if tenant.wrapped_lookup_key is not None:
+            raise ValueError("Tenant already has keys.")
+        dek = secrets.token_bytes(aead.KEY_SIZE)
+        lookup_key = secrets.token_bytes(aead.KEY_SIZE)
+        session.add(
+            TenantKey(
+                tenant_id=tenant_id,
+                version=1,
+                wrapped_dek=self._provider.wrap(dek, dek_context(tenant_id, 1)),
+                provider=self._provider.name,
+                provider_key_id=self._provider.key_id,
+                status="active",
+            )
+        )
+        tenant.wrapped_lookup_key = self._provider.wrap(lookup_key, lookup_context(tenant_id))
+        session.flush()
+
+    def add_dek_version(self, session: Session, tenant_id: uuid.UUID) -> tuple[int, int]:
+        """Make a new DEK the active one; the previous active version becomes 'retiring'.
+
+        Returns (previous_version, new_version). Call in the tenant's session.
+        """
+        _require_tenant_context(session, tenant_id)
+        lock_key_management(session, exclusive=False)
+        previous = session.scalar(
+            select(TenantKey)
+            .where(TenantKey.tenant_id == tenant_id, TenantKey.status == "active")
+            .with_for_update()  # concurrent rotations of one tenant queue up instead of failing
+        )
+        if previous is None:
+            raise NotFound("No active data key for this tenant.")
+        latest = session.scalar(
+            select(TenantKey.version)
+            .where(TenantKey.tenant_id == tenant_id)
+            .order_by(TenantKey.version.desc())
+            .limit(1)
+        )
+        new_version = (latest or 0) + 1
+        previous.status = "retiring"
+        session.flush()  # free the one-active-key slot before inserting the new key
+        session.add(
+            TenantKey(
+                tenant_id=tenant_id,
+                version=new_version,
+                wrapped_dek=self._provider.wrap(
+                    secrets.token_bytes(aead.KEY_SIZE), dek_context(tenant_id, new_version)
+                ),
+                provider=self._provider.name,
+                provider_key_id=self._provider.key_id,
+                status="active",
+            )
+        )
+        session.flush()
+        return previous.version, new_version
+
+    def active_dek(self, session: Session, tenant_id: uuid.UUID) -> DataKey:
+        _require_tenant_context(session, tenant_id)
+        version = session.scalar(
+            select(TenantKey.version).where(
+                TenantKey.tenant_id == tenant_id, TenantKey.status == "active"
+            )
+        )
+        if version is None:
+            raise NotFound("No active data key for this tenant.")
+        return DataKey(version=version, key=self.dek(session, tenant_id, version))
+
+    def dek(self, session: Session, tenant_id: uuid.UUID, version: int) -> bytes:
+        _require_tenant_context(session, tenant_id)
+        cached = self._deks.get((tenant_id, version))
+        if cached is not None:
+            return cached
+        row = session.get(TenantKey, (tenant_id, version))
+        if row is None:
+            raise NotFound("Data key not found.")
+        key = self._provider.unwrap(row.wrapped_dek, dek_context(tenant_id, version))
+        self._deks[(tenant_id, version)] = key
+        return key
+
+    def lookup_key(self, session: Session, tenant_id: uuid.UUID) -> bytes:
+        _require_tenant_context(session, tenant_id)
+        cached = self._lookup_keys.get(tenant_id)
+        if cached is not None:
+            return cached
+        wrapped = session.scalar(select(Tenant.wrapped_lookup_key).where(Tenant.id == tenant_id))
+        if wrapped is None:
+            raise NotFound("Tenant has no lookup key.")
+        key = self._provider.unwrap(wrapped, lookup_context(tenant_id))
+        self._lookup_keys[tenant_id] = key
+        return key

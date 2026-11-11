@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Encryption{% endblock %}
+{% block content %}
+<h1>Encryption keys</h1>
+<section class="card">
+  <table><thead><tr><th>Version</th><th>Status</th><th>Master key</th><th>Created</th><th class="r">Values using it</th></tr></thead><tbody>
+  {% for v in versions %}<tr><td>v{{ v.version }}</td>
+    <td><span class="tag {{ 'ok' if v.status == 'active' else '' }}">{{ v.status }}</span></td>
+    <td><code>{{ v.provider_key_id }}</code></td><td>{{ v.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td class="r">{{ usage.get(v.version, 0) }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% if user.is_owner %}
+  <div class="row">
+    <form method="post" action="/console/encryption/rotate">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Rotate data key</button>
+    </form>
+    <form method="post" action="/console/encryption/reencrypt">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="quiet">Re-encrypt existing values</button>
+    </form>
+  </div>
+  <p class="hint">Rotating starts a new key for new values. Re-encrypting moves existing values to it and retires old keys.</p>
+  {% endif %}
+</section>
+{% endblock %}

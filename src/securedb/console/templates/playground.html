@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Playground{% endblock %}
+{% block content %}
+<h1>Playground</h1>
+<p class="hint">Try tokenizing and detokenizing as one of your API keys. The key's policies decide what you get back, and every attempt is recorded in the audit log under your name.</p>
+{% if tokenized %}<p class="note ok">Token: <code>{{ tokenized.token }}</code> ({{ "new" if tokenized.created else "already existed" }})</p>{% endif %}
+{% if detokenized %}
+  {% if detokenized.error %}<p class="note bad">Not available to this key.</p>
+  {% else %}<p class="note ok">Value{% if detokenized.masked %} (masked){% endif %}: <code>{{ detokenized.value }}</code></p>{% endif %}
+{% endif %}
+{% if not keys %}<p class="hint">Create an API key first.</p>{% else %}
+<section class="card">
+  <h2>Tokenize</h2>
+  <form method="post" action="/console/playground/tokenize" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>As key <select name="key_id">{% for k in keys %}<option value="{{ k.id }}">{{ k.name }} ({{ k.prefix }})</option>{% endfor %}</select></label>
+    <label>Type <select name="type">{% for t in field_types %}<option>{{ t }}</option>{% endfor %}</select></label>
+    <label>Value <input name="value" required autocomplete="off"></label>
+    <label>IFSC (bank accounts) <input name="ifsc" autocomplete="off"></label>
+    <label>Subject ID (optional) <input name="subject_id" autocomplete="off"></label>
+    <button type="submit">Tokenize</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Detokenize</h2>
+  <form method="post" action="/console/playground/detokenize" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>As key <select name="key_id">{% for k in keys %}<option value="{{ k.id }}">{{ k.name }} ({{ k.prefix }})</option>{% endfor %}</select></label>
+    <label>Token <input name="token" required size="40" autocomplete="off"></label>
+    <button type="submit">Detokenize</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

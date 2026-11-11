@@ -24,6 +24,7 @@ class DomainError(Exception):
 
     def __init__(self, detail: str | None = None) -> None:
         self.detail = detail or self.title
+        self.headers: dict[str, str] = {}
         super().__init__(self.detail)
 
 
@@ -35,6 +36,46 @@ class NotFound(DomainError):
 class Unauthorized(DomainError):
     status_code = 401
     title = "Unauthorized"
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail)
+        self.headers["WWW-Authenticate"] = "Bearer"
+
+
+class Forbidden(DomainError):
+    status_code = 403
+    title = "Forbidden"
+
+
+class Conflict(DomainError):
+    status_code = 409
+    title = "Conflict"
+
+
+class UnprocessableEntity(DomainError):
+    status_code = 422
+    title = "Unprocessable Content"
+
+
+class RateLimited(DomainError):
+    status_code = 429
+    title = "Too Many Requests"
+
+    def __init__(self, retry_after: int, detail: str | None = None) -> None:
+        super().__init__(detail or "Rate limit exceeded for this API key.")
+        self.headers["Retry-After"] = str(retry_after)
+
+
+class CryptoError(DomainError):
+    """Decryption or unwrapping failed. Deliberately says nothing about why."""
+
+    status_code = 500
+    title = "Internal Server Error"
+
+
+class KeyProviderLocked(DomainError):
+    status_code = 503
+    title = "Service Unavailable"
 
 
 def get_request_id(request: Request) -> str:
@@ -69,7 +110,22 @@ def problem_response(
 
 async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
     error = cast(DomainError, exc)
-    return problem_response(error.status_code, error.title, error.detail, get_request_id(request))
+    if error.status_code >= 500:
+        # e.g. CryptoError (possible tampering) or a locked key provider: the response is
+        # deliberately vague, so the log is the only place this shows up.
+        log.error(
+            "domain_error",
+            error_type=type(error).__name__,
+            status=error.status_code,
+            request_id=get_request_id(request),
+        )
+    return problem_response(
+        error.status_code,
+        error.title,
+        error.detail,
+        get_request_id(request),
+        headers=error.headers or None,
+    )
 
 
 async def _handle_http_exception(request: Request, exc: Exception) -> JSONResponse:

@@ -6,18 +6,34 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from securedb import __version__
-from securedb.api import health
+from securedb.api import audit, health, subjects, tokens
+from securedb.api.ratelimit import FixedWindowRateLimiter
 from securedb.config import Settings, get_settings
+from securedb.console.routes import install_console
+from securedb.crypto.master_key import load_key_provider
+from securedb.crypto.provider import KeyProvider
+from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.session import Database
 from securedb.errors import UnhandledErrorMiddleware, install_error_handlers
 from securedb.logs import configure_logging
-from securedb.middleware import RequestIdMiddleware
+from securedb.middleware import (
+    BodySizeLimitMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
+from securedb.vault.service import TokenService
+from securedb.vault.subjects import SubjectService
 
 
-def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    database: Database | None = None,
+    key_provider: KeyProvider | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     db = database or Database(settings.database_url)
+    provider = key_provider or load_key_provider(settings)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -32,14 +48,35 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         redoc_url=None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
-    readiness_checks: list[tuple[str, Callable[[], bool]]] = [("database", db.ping)]
+    readiness_checks: list[tuple[str, Callable[[], bool]]] = [
+        ("database", db.ping),
+        ("key_provider", provider.is_unlocked),
+    ]
     app.state.settings = settings
     app.state.db = db
+    app.state.key_provider = provider
+    app.state.keyring = KeyRing(provider)
+    app.state.tokens = TokenService(app.state.keyring)
+    app.state.subjects = SubjectService(app.state.keyring)
+    app.state.rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
+    login_message = "Too many sign-in attempts. Try again shortly."
+    app.state.login_limiter = FixedWindowRateLimiter(
+        settings.login_attempts_per_minute, message=login_message
+    )
+    app.state.login_ip_limiter = FixedWindowRateLimiter(
+        settings.login_attempts_per_minute_per_ip, message=login_message
+    )
     app.state.readiness_checks = readiness_checks
 
     # Added first = innermost: errors are caught inside RequestIdMiddleware.
     app.add_middleware(UnhandledErrorMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_body_bytes)
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)  # outermost: covers every response
     install_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(tokens.router)
+    app.include_router(audit.router)
+    app.include_router(subjects.router)
+    install_console(app)
     return app

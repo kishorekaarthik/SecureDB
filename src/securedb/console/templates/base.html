@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Console{% endblock %} · SecureDB Vault</title>
+  <link rel="stylesheet" href="/console/static/console.css">
+</head>
+<body>
+<header class="bar">
+  <span class="brand">SecureDB Vault</span>
+  {% if user %}
+  <nav>
+    {% for href, label in [("/console", "Overview"), ("/console/keys", "API keys"), ("/console/audit", "Audit log"), ("/console/encryption", "Encryption")] %}
+    <a href="{{ href }}"{% if path == href %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+    {% if user.is_owner %}<a href="/console/playground"{% if path.startswith("/console/playground") %} aria-current="page"{% endif %}>Playground</a>{% endif %}
+  </nav>
+  <form method="post" action="/console/logout" class="who">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <span>{{ user.email }} <span class="tag">{{ user.role }}</span></span>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
+  {% endif %}
+</header>
+<main>
+  {% if message %}<p class="note ok" role="status">{{ message }}</p>{% endif %}
+  {% if error %}<p class="note bad" role="alert">{{ error }}</p>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

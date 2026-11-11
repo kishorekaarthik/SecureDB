@@ -1,0 +1,11 @@
+# Gitleaks configuration: all default rules stay enabled; only narrow, documented
+# exceptions are listed here.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Example vault tokens (tok_<type>_...) in tests and docs: opaque references, not secrets"
+condition = "AND"
+regexes = ['''^tok_[a-z_]+_[A-Za-z0-9]+$''']
+paths = ['''^tests/''', '''^docs/''']

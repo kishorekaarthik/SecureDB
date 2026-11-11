@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<h1>{{ tenant_name }}</h1>
+<div class="tiles">
+  <div class="tile"><span class="num">{{ total }}</span><span>tokens stored</span></div>
+  <div class="tile"><span class="num">{{ active_keys }}</span><span>active API keys</span></div>
+  <div class="tile"><span class="num">v{{ active_version }}</span><span>active data key</span></div>
+</div>
+<section class="card">
+  <h2>Tokens by type</h2>
+  {% if counts %}
+  <table><thead><tr><th>Type</th><th class="r">Count</th></tr></thead><tbody>
+  {% for type, count in counts %}<tr><td><code>{{ type }}</code></td><td class="r">{{ count }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="hint">Nothing tokenized yet.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Recent activity</h2>
+  <table><thead><tr><th>#</th><th>When (UTC)</th><th>Action</th><th>Actor</th></tr></thead><tbody>
+  {% for e in recent %}<tr><td>{{ e.seq }}</td><td>{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") }}</td><td><code>{{ e.action }}</code></td><td>{{ e.actor_type }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p><a href="/console/audit">Full audit log</a></p>
+</section>
+{% endblock %}

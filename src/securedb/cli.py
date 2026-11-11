@@ -1,13 +1,148 @@
 """Operator command-line interface (`securedb ...`)."""
 
+import uuid
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from enum import StrEnum
+from pathlib import Path
 from typing import Annotated
 
 import typer
 import uvicorn
+from sqlalchemy import select
 
 from securedb import __version__
+from securedb.audit.log import Actor, verify
+from securedb.config import get_settings
+from securedb.console.auth import create_console_user, unlock_console_user
+from securedb.crypto.master_key import (
+    MasterKeyError,
+    init_file_master_key,
+    init_keychain_master_key,
+    load_key_provider,
+    promote_keychain_master_key,
+    stage_keychain_master_key,
+)
+from securedb.crypto.provider import KeyProvider
+from securedb.crypto.rotation import reencrypt, rotate_dek, rotate_master
+from securedb.crypto.tenant_keys import KeyRing
+from securedb.db.models import ApiKey
+from securedb.db.session import Database
+from securedb.demo import DemoTenant, seed_demo
+from securedb.errors import DomainError, KeyProviderLocked, NotFound
+from securedb.policy.engine import Action, Effect, set_policy
+from securedb.tenants.api_keys import Scope, issue_api_key, revoke_api_key
+from securedb.tenants.service import create_tenant, find_tenant_id
+from securedb.vault.fields import FieldType
 
 app = typer.Typer(no_args_is_help=True, help="SecureDB Vault operator CLI.")
+
+TenantOption = Annotated[str, typer.Option("--tenant", help="Tenant name.")]
+
+
+def _master_key_store() -> str:
+    return get_settings().master_key_store
+
+
+def _open() -> tuple[Database, KeyProvider]:
+    settings = get_settings()
+    return Database(settings.database_url), load_key_provider(settings)
+
+
+@contextmanager
+def _operator_errors() -> Iterator[None]:
+    """Print domain errors as one clean line and exit 1, instead of a traceback."""
+    try:
+        yield
+    except (DomainError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+def _with_database(action: Callable[[Database, KeyProvider], None]) -> None:
+    db, provider = _open()
+    try:
+        with _operator_errors():
+            action(db, provider)
+    finally:
+        db.dispose()
+
+
+def _key_id(db: Database, tenant_id: uuid.UUID, prefix: str) -> uuid.UUID:
+    with db.tenant_session(tenant_id) as session:
+        key_id = session.scalar(select(ApiKey.id).where(ApiKey.prefix == prefix))
+    if key_id is None:
+        raise NotFound("API key not found.")
+    return key_id
+
+
+@app.command("create-tenant")
+def create_tenant_command(name: Annotated[str, typer.Argument(help="Tenant name.")]) -> None:
+    """Create a tenant and its encryption keys."""
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        if not provider.is_unlocked():
+            raise KeyProviderLocked(getattr(provider, "reason", "The vault is locked."))
+        tenant_id = create_tenant(db, KeyRing(provider), name, actor=Actor.system("cli"))
+        typer.echo(f"Created tenant {name} ({tenant_id}).")
+
+    _with_database(run)
+
+
+@app.command("create-api-key")
+def create_api_key_command(
+    tenant: TenantOption,
+    name: Annotated[str, typer.Option(help="What this key is for, e.g. billing-service.")],
+    scope: Annotated[list[Scope], typer.Option(help="Repeat for several scopes.")],
+) -> None:
+    """Issue an API key. The key is shown once; store it securely."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            issued = issue_api_key(session, tenant_id, name, scope, actor=Actor.system("cli"))
+        typer.echo(f"API key (shown once): {issued.plaintext}")
+        typer.echo(f"Prefix: {issued.prefix}")
+
+    _with_database(run)
+
+
+@app.command("revoke-api-key")
+def revoke_api_key_command(
+    tenant: TenantOption, prefix: Annotated[str, typer.Argument(help="The key's prefix.")]
+) -> None:
+    """Revoke an API key immediately."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        key_id = _key_id(db, tenant_id, prefix)
+        with db.tenant_session(tenant_id) as session:
+            revoke_api_key(session, key_id, actor=Actor.system("cli"))
+        typer.echo(f"Revoked API key {prefix}.")
+
+    _with_database(run)
+
+
+@app.command("set-policy")
+def set_policy_command(
+    tenant: TenantOption,
+    key: Annotated[str, typer.Option("--key", help="The API key's prefix.")],
+    field_type: Annotated[FieldType, typer.Option("--type", help="Field type.")],
+    action: Annotated[Action, typer.Option(help="tokenize or detokenize.")],
+    effect: Annotated[Effect, typer.Option(help="allow, mask or deny (removes the policy).")],
+) -> None:
+    """Grant, change or remove what an API key may do with a field type."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        key_id = _key_id(db, tenant_id, key)
+        with db.tenant_session(tenant_id) as session:
+            set_policy(
+                session, tenant_id, key_id, field_type, action, effect, actor=Actor.system("cli")
+            )
+        typer.echo(f"Policy set: {key} {action.value} {field_type.value} -> {effect.value}.")
+
+    _with_database(run)
 
 
 @app.command()
@@ -21,6 +156,13 @@ def serve(
     host: Annotated[str, typer.Option(help="Interface to bind.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
     reload: Annotated[bool, typer.Option(help="Auto-reload on code changes (dev).")] = False,
+    forwarded_allow_ips: Annotated[
+        str,
+        typer.Option(
+            help="Reverse-proxy addresses whose X-Forwarded-* headers are trusted "
+            "(comma-separated). Needed behind a proxy for per-client login limits and HSTS."
+        ),
+    ] = "127.0.0.1",
 ) -> None:
     """Run the API server."""
     uvicorn.run(
@@ -30,4 +172,216 @@ def serve(
         port=port,
         reload=reload,
         log_config=None,
+        proxy_headers=True,
+        forwarded_allow_ips=forwarded_allow_ips,
     )
+
+
+class MasterKeyStore(StrEnum):
+    keychain = "keychain"
+    file = "file"
+
+
+@app.command()
+def init(
+    store: Annotated[
+        MasterKeyStore, typer.Option(help="Where to keep the master key.")
+    ] = MasterKeyStore.keychain,
+    key_file: Annotated[
+        Path, typer.Option(help="Master key file (only with --store file).")
+    ] = Path("securedb-master.key"),
+) -> None:
+    """Create the master key. Run once per installation."""
+    try:
+        if store is MasterKeyStore.keychain:
+            key_id = init_keychain_master_key()
+            typer.echo(f"Created master key {key_id} in the OS keychain.")
+            return
+        passphrase: str = typer.prompt(
+            "Master key passphrase", hide_input=True, confirmation_prompt=True
+        )
+        key_id = init_file_master_key(key_file, passphrase)
+        typer.echo(
+            f"Created master key {key_id} in {key_file}. Set SECUREDB_MASTER_KEY_STORE=file "
+            "and SECUREDB_MASTER_KEY_PASSPHRASE to unlock it at startup."
+        )
+    except MasterKeyError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+@app.command("verify-audit")
+def verify_audit_command(
+    tenant: TenantOption,
+    anchor_seq: Annotated[
+        int | None, typer.Option(min=1, help="Seq of a head you recorded earlier.")
+    ] = None,
+    anchor_hash: Annotated[
+        str | None, typer.Option(help="The head_hash you recorded for --anchor-seq.")
+    ] = None,
+) -> None:
+    """Recompute a tenant's audit hash chain. Exits 2 if it is broken.
+
+    An anchor (seq + hash recorded outside the database) also detects truncation of the
+    newest entries and a full rewrite by someone with the table-owner role.
+    """
+    if (anchor_seq is None) != (anchor_hash is None):
+        typer.echo("Error: --anchor-seq and --anchor-hash must be given together.", err=True)
+        raise typer.Exit(code=1)
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            result = verify(session, tenant_id, anchor_seq=anchor_seq, anchor_hash=anchor_hash)
+        if result.ok:
+            typer.echo(f"OK: {result.entries} entries, head {result.head_hash}")
+            return
+        typer.echo(
+            f"BROKEN at seq {result.first_broken_seq} "
+            f"(first {result.entries} entries intact, head {result.head_hash})",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    _with_database(run)
+
+
+def _unlocked(provider: KeyProvider) -> KeyProvider:
+    if not provider.is_unlocked():
+        raise KeyProviderLocked(getattr(provider, "reason", "The vault is locked."))
+    return provider
+
+
+@app.command("rotate-dek")
+def rotate_dek_command(tenant: TenantOption) -> None:
+    """Start using a new data key for a tenant (old values keep working until re-encrypted)."""
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            version = rotate_dek(session, keyring, tenant_id, actor=Actor.system("cli"))
+        typer.echo(
+            f"Tenant {tenant} now encrypts with DEK v{version}. "
+            f"Run `securedb reencrypt --tenant {tenant}` to move existing values."
+        )
+
+    _with_database(run)
+
+
+@app.command("reencrypt")
+def reencrypt_command(
+    tenant: TenantOption,
+    batch_size: Annotated[int, typer.Option(min=1, max=10_000, help="Rows per transaction.")] = 500,
+) -> None:
+    """Re-encrypt a tenant's values with its active data key; retire unused old keys."""
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        result = reencrypt(db, keyring, tenant_id, actor=Actor.system("cli"), batch_size=batch_size)
+        retired = ", ".join(str(v) for v in result.retired_versions) or "none"
+        typer.echo(f"Re-encrypted {result.reencrypted} values; retired versions: {retired}.")
+
+    _with_database(run)
+
+
+@app.command("rotate-master")
+def rotate_master_command() -> None:
+    """Replace the OS-keychain master key; every tenant's keys are re-wrapped atomically.
+
+    Crash-safe: the new key is saved as 'pending' first, the database is re-wrapped in one
+    transaction, then the pending key is promoted (the old one is kept as 'previous').
+    Re-running after an interruption finishes the job. Restart servers afterwards.
+    """
+
+    if _master_key_store() != "keychain":
+        typer.echo(
+            "Error: rotate-master supports the OS-keychain store only. Rotating a file or "
+            "KMS master key is not automated yet.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        current = _unlocked(provider)  # never rotate (or create) a key without the current one
+        try:
+            pending = stage_keychain_master_key()
+            # Idempotent: after an interrupted run this only re-wraps what is left.
+            tenants = rotate_master(db, current, pending, actor=Actor.system("cli"))
+            promote_keychain_master_key()
+        except MasterKeyError as exc:
+            raise ValueError(str(exc)) from None
+        typer.echo(
+            f"Rotated master key {provider.key_id} -> {pending.key_id} "
+            f"({tenants} tenants re-wrapped). "
+            "Restart running servers: they still hold the old master key."
+        )
+
+    _with_database(run)
+
+
+class ConsoleRole(StrEnum):
+    owner = "owner"
+    viewer = "viewer"
+
+
+@app.command("create-user")
+def create_user_command(
+    tenant: TenantOption,
+    email: Annotated[str, typer.Option(help="The user's e-mail address (their sign-in name).")],
+    role: Annotated[ConsoleRole, typer.Option(help="owner can change things; viewer cannot.")],
+) -> None:
+    """Create an admin-console user. Prints the authenticator (TOTP) setup link once."""
+    password: str = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        keyring = KeyRing(_unlocked(provider))
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            _user_id, uri = create_console_user(
+                session, keyring, tenant_id, email, password, role.value, actor=Actor.system("cli")
+            )
+        typer.echo(f"Created console user {email.strip().lower()} ({role.value}).")
+        typer.echo("Add this to an authenticator app now; it is not shown again:")
+        typer.echo(uri)
+
+    _with_database(run)
+
+
+@app.command("unlock-user")
+def unlock_user_command(
+    tenant: TenantOption,
+    email: Annotated[str, typer.Option(help="The locked user's e-mail address.")],
+) -> None:
+    """Clear a console user's lockout (after too many failed sign-ins)."""
+
+    def run(db: Database, _provider: KeyProvider) -> None:
+        tenant_id = find_tenant_id(db, tenant)
+        with db.tenant_session(tenant_id) as session:
+            unlock_console_user(session, tenant_id, email, actor=Actor.system("cli"))
+        typer.echo(f"Unlocked {email.strip().lower()}.")
+
+    _with_database(run)
+
+
+@app.command("seed-demo")
+def seed_demo_command() -> None:
+    """Create two demo tenants with fake sample data, API keys and a console owner each."""
+    password: str = typer.prompt(
+        "Password for the demo console users", hide_input=True, confirmation_prompt=True
+    )
+
+    def show(tenant: DemoTenant) -> None:
+        typer.echo(f"\nTenant {tenant.name}")
+        typer.echo(f"  backend key (full values):   {tenant.backend_key}")
+        typer.echo(f"  support key (masked values): {tenant.support_key}")
+        typer.echo(f"  console sign-in: {tenant.console_email}")
+        typer.echo(f"  authenticator setup (shown once): {tenant.totp_uri}")
+        typer.echo(f"  sample token: {tenant.sample_tokens[0]}")
+
+    def run(db: Database, provider: KeyProvider) -> None:
+        seed_demo(db, KeyRing(_unlocked(provider)), password, on_tenant=show)
+        typer.echo("\nStart the server with `securedb serve`, then open /console or /docs.")
+
+    _with_database(run)

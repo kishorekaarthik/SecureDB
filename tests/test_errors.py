@@ -108,3 +108,21 @@ def test_unhandled_errors_do_not_reach_the_server(app: FastAPI) -> None:
     assert response.status_code == 500
     assert re.fullmatch(r"[0-9a-f]{32}", response.headers["X-Request-ID"])
     assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_server_side_domain_errors_are_logged(
+    offline_settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from securedb.errors import CryptoError
+
+    application = create_app(offline_settings, Database(offline_settings.database_url))
+
+    @application.get("/raise/crypto")
+    def raise_crypto() -> None:
+        raise CryptoError()
+
+    response = TestClient(application).get("/raise/crypto")
+    assert response.status_code == 500
+    logs = capsys.readouterr().out
+    assert "domain_error" in logs and "CryptoError" in logs
+    assert response.json()["request_id"] in logs

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}API keys{% endblock %}
+{% block content %}
+<h1>API keys</h1>
+{% if new_key %}
+<section class="card secret" role="status">
+  <h2>New API key</h2>
+  <p>Copy it now. It is shown only once and cannot be recovered.</p>
+  <p><code class="key">{{ new_key }}</code></p>
+</section>
+{% endif %}
+{% if user.is_owner %}
+<section class="card">
+  <h2>Create a key</h2>
+  <form method="post" action="/console/keys" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Name <input name="name" required maxlength="64" placeholder="billing-service"></label>
+    <fieldset><legend>Scopes</legend>
+      {% for scope in scopes %}<label class="check"><input type="checkbox" name="scopes" value="{{ scope }}"> <code>{{ scope }}</code></label>{% endfor %}
+    </fieldset>
+    <button type="submit">Create key</button>
+  </form>
+</section>
+{% endif %}
+{% for key in keys %}
+<section class="card">
+  <h2>{{ key.name }} <code>{{ key.prefix }}</code>
+    {% if key.revoked_at %}<span class="tag bad">revoked</span>{% else %}<span class="tag ok">active</span>{% endif %}</h2>
+  <p class="hint">Scopes: {% for s in key.scopes %}<code>{{ s }}</code> {% endfor %}
+    · created {{ key.created_at.strftime("%Y-%m-%d") }}
+    · last used {{ key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "never" }}</p>
+  <table><thead><tr><th>Field type</th><th>Action</th><th>Effect</th></tr></thead><tbody>
+  {% for p in policies.get(key.id, []) %}<tr><td><code>{{ p.field_type }}</code></td><td>{{ p.action }}</td><td><span class="tag">{{ p.effect }}</span></td></tr>
+  {% else %}<tr><td colspan="3" class="hint">No policies: every request is denied.</td></tr>{% endfor %}
+  </tbody></table>
+  {% if user.is_owner and not key.revoked_at %}
+  <form method="post" action="/console/keys/{{ key.id }}/policy" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Field type <select name="field_type">{% for t in field_types %}<option>{{ t }}</option>{% endfor %}</select></label>
+    <label>Action <select name="action"><option>tokenize</option><option>detokenize</option></select></label>
+    <label>Effect <select name="effect"><option>allow</option><option>mask</option><option>deny</option></select></label>
+    <button type="submit">Set policy</button>
+  </form>
+  <form method="post" action="/console/keys/{{ key.id }}/scopes" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset><legend>Scopes</legend>
+      {% for scope in scopes %}<label class="check"><input type="checkbox" name="scopes" value="{{ scope }}"{% if scope in key.scopes %} checked{% endif %}> <code>{{ scope }}</code></label>{% endfor %}
+    </fieldset>
+    <button type="submit" class="quiet">Update scopes</button>
+  </form>
+  <form method="post" action="/console/keys/{{ key.id }}/revoke">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="danger">Revoke key</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<p class="hint">No API keys yet.</p>
+{% endfor %}
+{% endblock %}

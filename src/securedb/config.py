@@ -1,9 +1,10 @@
 """Application settings, loaded from SECUREDB_* environment variables and .env."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DB_SCHEME = "postgresql+psycopg://"
@@ -23,6 +24,15 @@ class Settings(BaseSettings):
     database_url: str
     migration_database_url: str
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    master_key_store: Literal["keychain", "file", "kms"] = "keychain"
+    kms_key_id: str | None = None  # key ARN or alias, for the kms store
+    kms_region: str | None = None
+    master_key_file: Path = Path("securedb-master.key")
+    master_key_passphrase: SecretStr | None = None
+    rate_limit_per_minute: int = Field(default=600, ge=1)
+    max_body_bytes: int = Field(default=1_048_576, ge=1024)
+    login_attempts_per_minute: int = Field(default=10, ge=1)  # per account
+    login_attempts_per_minute_per_ip: int = Field(default=60, ge=1)
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

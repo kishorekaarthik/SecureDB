@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<section class="card">
+  <form method="get" action="/console/audit" class="row">
+    <label>Action <input name="action" value="{{ action }}" placeholder="detokenize" pattern="[a-z._]*"></label>
+    <button type="submit" class="quiet">Filter</button>
+    <a class="button" href="/console/audit/verify">Verify chain</a>
+  </form>
+  <table><thead><tr><th>#</th><th>When (UTC)</th><th>Action</th><th>Actor</th><th>Tokens</th><th>Outcome</th><th>Hash</th></tr></thead><tbody>
+  {% for e in entries %}
+  <tr><td>{{ e.seq }}</td><td>{{ e.ts.strftime("%Y-%m-%d %H:%M:%S") }}</td><td><code>{{ e.action }}</code></td>
+    <td>{{ e.actor_type }}<br><span class="hint">{{ e.actor_id }}</span></td>
+    <td>{{ e.token_ids | length }}</td><td><code>{{ e.outcome | tojson }}</code></td>
+    <td><code title="{{ e.hash.hex() }}">{{ e.hash.hex()[:12] }}…</code></td></tr>
+  {% else %}<tr><td colspan="7" class="hint">No entries.</td></tr>{% endfor %}
+  </tbody></table>
+  {% if older %}<p><a href="/console/audit?before={{ older }}{% if action %}&amp;action={{ action }}{% endif %}">Older entries</a></p>{% endif %}
+</section>
+{% endblock %}

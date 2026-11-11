@@ -1,0 +1,245 @@
+"""Tokenize, detokenize and delete values (spec §2.6).
+
+Every method expects a session from ``Database.tenant_session(key.tenant_id)``.
+"""
+
+import secrets
+import string
+import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from securedb.audit.log import Actor, append
+from securedb.crypto.tenant_keys import KeyRing
+from securedb.crypto.values import EncryptedValue, ValueCipher
+from securedb.db.models import Token, TokenSubject
+from securedb.errors import Forbidden, NotFound, UnprocessableEntity
+from securedb.policy.engine import Action, Effect, effects_for
+from securedb.tenants.api_keys import AuthenticatedKey
+from securedb.vault.fields import (
+    FieldType,
+    FieldValidationError,
+    Output,
+    mask,
+    normalize,
+    to_output,
+)
+
+NOT_AVAILABLE = "not_available"
+TOKEN_RANDOM_LENGTH = 22  # ~131 bits of base62
+_ALPHABET = string.ascii_letters + string.digits
+
+
+@dataclass(frozen=True)
+class TokenizeItem:
+    type: FieldType
+    value: Any = field(repr=False)
+    subject_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TokenizeResult:
+    token: str
+    type: FieldType
+    created: bool
+
+
+@dataclass(frozen=True)
+class DetokenizeResult:
+    token: str
+    value: Output | None = field(default=None, repr=False)
+    masked: bool = False
+    error: str | None = None
+
+
+def new_token(field_type: FieldType) -> str:
+    """A random, meaningless token: tok_<type>_<22 base62 characters>."""
+    suffix = "".join(secrets.choice(_ALPHABET) for _ in range(TOKEN_RANDOM_LENGTH))
+    return f"tok_{field_type.value}_{suffix}"
+
+
+def _via(key: AuthenticatedKey, actor: Actor | None) -> dict[str, str]:
+    return {"via_key": str(key.id)} if actor is not None else {}
+
+
+class TokenService:
+    def __init__(self, keyring: KeyRing) -> None:
+        self._cipher = ValueCipher(keyring)
+
+    def tokenize(
+        self,
+        session: Session,
+        key: AuthenticatedKey,
+        items: Sequence[TokenizeItem],
+        *,
+        actor: Actor | None = None,
+    ) -> list[TokenizeResult]:
+        """All items are checked before anything is written; any failure rejects the batch.
+
+        `actor` is for callers acting *through* a key's policies (the console playground):
+        the audit entry then names that actor and records the key as `via_key`.
+        """
+        allowed = effects_for(session, key.id, Action.tokenize)
+        denied = sorted({item.type.value for item in items} - {t.value for t in allowed})
+        if denied:
+            raise Forbidden(f"This API key may not tokenize: {', '.join(denied)}.")
+
+        normalized: list[str] = []
+        problems: list[str] = []
+        for index, item in enumerate(items):
+            try:
+                normalized.append(normalize(item.type, item.value))
+            except FieldValidationError as exc:
+                problems.append(f"items[{index}]: {exc}")
+        if problems:
+            raise UnprocessableEntity("; ".join(problems))
+
+        lookups = [
+            self._cipher.lookup_hmac(session, key.tenant_id, item.type.value, value)
+            for item, value in zip(items, normalized, strict=True)
+        ]
+        # Insert in a canonical order so concurrent batches that share values always
+        # take row locks in the same sequence (no deadlocks); answer in request order.
+        order = sorted(range(len(items)), key=lambda i: (items[i].type.value, lookups[i]))
+        results: dict[int, TokenizeResult] = {}
+        for index in order:
+            result = self._tokenize_one(
+                session, key.tenant_id, items[index], normalized[index], lookups[index]
+            )
+            if items[index].subject_id is not None:
+                session.execute(
+                    insert(TokenSubject)
+                    .values(
+                        token=result.token,
+                        subject_id=items[index].subject_id,
+                        tenant_id=key.tenant_id,
+                    )
+                    .on_conflict_do_nothing()
+                )
+            results[index] = result
+        ordered = [results[index] for index in range(len(items))]
+        append(
+            session,
+            key.tenant_id,
+            actor or Actor.api_key(key.id),
+            "tokenize",
+            token_ids=[r.token for r in ordered],
+            outcome={
+                "items": len(ordered),
+                "created": sum(r.created for r in ordered),
+                "types": sorted({r.type.value for r in ordered}),
+                **_via(key, actor),
+            },
+        )
+        return ordered
+
+    def _tokenize_one(
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        item: TokenizeItem,
+        value: str,
+        lookup: bytes,
+    ) -> TokenizeResult:
+        existing = self._find(session, tenant_id, item.type, lookup)
+        if existing is not None:
+            return TokenizeResult(existing, item.type, created=False)
+
+        token = new_token(item.type)
+        encrypted = self._cipher.encrypt(session, tenant_id, token, item.type.value, value)
+        inserted = session.scalar(
+            insert(Token)
+            .values(
+                token=token,
+                tenant_id=tenant_id,
+                type=item.type.value,
+                lookup_hmac=lookup,
+                ciphertext=encrypted.ciphertext,
+                nonce=encrypted.nonce,
+                key_version=encrypted.key_version,
+            )
+            .on_conflict_do_nothing(constraint="uq_tokens_dedup")
+            .returning(Token.token)
+        )
+        if inserted is not None:
+            return TokenizeResult(inserted, item.type, created=True)
+        # Lost a race with a concurrent request for the same value: use its token.
+        winner = self._find(session, tenant_id, item.type, lookup)
+        if winner is None:  # pragma: no cover - the conflicting row must be visible
+            raise NotFound("Token not found.")
+        return TokenizeResult(winner, item.type, created=False)
+
+    @staticmethod
+    def _find(
+        session: Session, tenant_id: uuid.UUID, field_type: FieldType, lookup: bytes
+    ) -> str | None:
+        # FOR KEY SHARE: a concurrent erasure (which locks FOR UPDATE) either waits for us
+        # and then sees our new subject link, or finishes first and the row is simply not
+        # found here, so we mint a new token instead of returning a deleted one.
+        return session.scalar(
+            select(Token.token)
+            .where(
+                Token.tenant_id == tenant_id,
+                Token.type == field_type.value,
+                Token.lookup_hmac == lookup,
+            )
+            .with_for_update(key_share=True)
+        )
+
+    def detokenize(
+        self,
+        session: Session,
+        key: AuthenticatedKey,
+        tokens: Sequence[str],
+        *,
+        actor: Actor | None = None,
+    ) -> list[DetokenizeResult]:
+        """Per-token results; denied and unknown tokens are indistinguishable."""
+        effects = effects_for(session, key.id, Action.detokenize)
+        rows = {
+            row.token: row
+            for row in session.scalars(select(Token).where(Token.token.in_(set(tokens))))
+        }
+        results: list[DetokenizeResult] = []
+        audit: list[str] = []  # internal detail: denied vs not_found (clients see neither)
+        for token in tokens:
+            row = rows.get(token)
+            effect = effects.get(FieldType(row.type), Effect.deny) if row else Effect.deny
+            if row is None or effect is Effect.deny:
+                results.append(DetokenizeResult(token, error=NOT_AVAILABLE))
+                audit.append("not_found" if row is None else "denied")
+                continue
+            field_type = FieldType(row.type)
+            value = self._cipher.decrypt(
+                session,
+                key.tenant_id,
+                row.token,
+                row.type,
+                EncryptedValue(row.ciphertext, row.nonce, row.key_version),
+            )
+            if effect is Effect.mask:
+                results.append(DetokenizeResult(token, mask(field_type, value), masked=True))
+                audit.append("masked")
+            else:
+                results.append(DetokenizeResult(token, to_output(field_type, value)))
+                audit.append("allowed")
+        append(
+            session,
+            key.tenant_id,
+            actor or Actor.api_key(key.id),
+            "detokenize",
+            token_ids=list(tokens),
+            outcome={"results": audit, **_via(key, actor)},
+        )
+        return results
+
+    def delete_token(self, session: Session, key: AuthenticatedKey, token: str) -> None:
+        result = session.execute(delete(Token).where(Token.token == token))
+        if result.rowcount == 0:  # type: ignore[attr-defined]
+            raise NotFound("Token not found.")
+        append(session, key.tenant_id, Actor.api_key(key.id), "token.delete", token_ids=[token])

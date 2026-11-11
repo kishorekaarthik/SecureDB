@@ -14,6 +14,9 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "SECUREDB_DATABASE_URL",
         "SECUREDB_MIGRATION_DATABASE_URL",
         "SECUREDB_LOG_LEVEL",
+        "SECUREDB_MASTER_KEY_STORE",
+        "SECUREDB_MASTER_KEY_FILE",
+        "SECUREDB_MASTER_KEY_PASSPHRASE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -73,3 +76,13 @@ def test_validation_errors_do_not_echo_database_passwords() -> None:
             migration_database_url=OWNER_URL,
         )
     assert "S3cretPw" not in str(exc_info.value)
+
+
+def test_master_key_settings_defaults_and_secrecy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SECUREDB_MASTER_KEY_PASSPHRASE", "correct horse battery staple")
+    settings = Settings(_env_file=None, database_url=APP_URL, migration_database_url=OWNER_URL)
+    assert settings.master_key_store == "keychain"
+    assert str(settings.master_key_file) == "securedb-master.key"
+    assert settings.master_key_passphrase is not None
+    assert settings.master_key_passphrase.get_secret_value() == "correct horse battery staple"
+    assert "correct horse" not in repr(settings)
