@@ -5,17 +5,21 @@ import pytest
 
 from securedb.config import Settings
 from securedb.crypto import master_key as mk
-from securedb.crypto.kms import AwsKmsKeyProvider
+from securedb.crypto.kms import AwsKmsKeyProvider, KmsUnavailable
 from securedb.crypto.local import LockedKeyProvider
 from securedb.crypto.provider import KeyProvider
-from securedb.errors import CryptoError
+from securedb.errors import CryptoError, KeyProviderLocked
 
 KEY_ARN = "arn:aws:kms:ap-south-1:111122223333:key/demo"
 CONTEXT = {"purpose": "dek", "tenant_id": "t1", "version": "1"}
 
 
 class FakeKmsError(Exception):
-    """Stands in for botocore's ClientError."""
+    """Stands in for botocore's ClientError (which carries the AWS error code)."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"{code}: secret detail")
+        self.response = {"Error": {"Code": code, "Message": "secret detail"}}
 
 
 class FakeKms:
@@ -25,11 +29,12 @@ class FakeKms:
         self.blobs: dict[bytes, tuple[str, dict[str, str], bytes]] = {}
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.down = False
+        self.enabled = True
 
     def encrypt(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("encrypt", kwargs))
         if self.down:
-            raise FakeKmsError("KMS unavailable")
+            raise FakeKmsError("ThrottlingException")
         blob = secrets.token_bytes(48)
         self.blobs[blob] = (kwargs["KeyId"], dict(kwargs["EncryptionContext"]), kwargs["Plaintext"])
         return {"CiphertextBlob": blob}
@@ -37,19 +42,21 @@ class FakeKms:
     def decrypt(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("decrypt", kwargs))
         entry = self.blobs.get(kwargs["CiphertextBlob"])
+        if self.down:
+            raise FakeKmsError("ThrottlingException")
         if (
-            self.down
-            or entry is None
+            entry is None
             or entry[0] != kwargs["KeyId"]
             or entry[1] != dict(kwargs["EncryptionContext"])
         ):
-            raise FakeKmsError("InvalidCiphertextException: secret detail")
+            raise FakeKmsError("InvalidCiphertextException")
         return {"Plaintext": entry[2]}
 
     def describe_key(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("describe_key", kwargs))
         if self.down:
-            raise FakeKmsError("KMS unavailable")
-        return {"KeyMetadata": {"Enabled": True}}
+            raise FakeKmsError("ThrottlingException")
+        return {"KeyMetadata": {"Enabled": self.enabled}}
 
 
 @pytest.fixture
@@ -75,6 +82,7 @@ def test_wrap_round_trip_sends_the_context_to_kms(
     wrapped = provider.wrap(dek, CONTEXT)
     assert dek not in wrapped
     assert provider.unwrap(wrapped, CONTEXT) == dek
+    assert [name for name, _ in kms.calls] == ["encrypt", "decrypt"]
     for _name, kwargs in kms.calls:
         assert kwargs["KeyId"] == KEY_ARN
         assert kwargs["EncryptionContext"] == CONTEXT
@@ -98,9 +106,6 @@ def test_kms_errors_become_generic_crypto_errors(provider: AwsKmsKeyProvider, km
         provider.unwrap(b"garbage", CONTEXT)
     assert exc_info.value.__cause__ is None
     assert "secret detail" not in str(exc_info.value)
-    kms.down = True
-    with pytest.raises(CryptoError):
-        provider.wrap(secrets.token_bytes(32), CONTEXT)
 
 
 def test_is_unlocked_reflects_kms_reachability(provider: AwsKmsKeyProvider, kms: FakeKms) -> None:
@@ -132,9 +137,37 @@ def test_kms_store_builds_the_kms_provider(monkeypatch: pytest.MonkeyPatch, kms:
 
 def test_kms_store_without_boto3_gives_a_locked_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     def no_boto(region: str | None) -> Any:
-        raise mk.MasterKeyError("AWS KMS support needs boto3: install securedb[kms].")
+        raise KmsUnavailable("AWS KMS support needs boto3: install securedb[kms].")
 
     monkeypatch.setattr("securedb.crypto.kms.default_client", no_boto)
     provider = mk.load_key_provider(_settings(master_key_store="kms", kms_key_id=KEY_ARN))
     assert isinstance(provider, LockedKeyProvider)
     assert "boto3" in provider.reason
+
+
+def test_an_outage_is_unavailable_not_tampering(
+    provider: AwsKmsKeyProvider, kms: FakeKms, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from securedb.logs import configure_logging
+
+    configure_logging("INFO")
+    wrapped = provider.wrap(secrets.token_bytes(32), CONTEXT)
+    kms.down = True
+    with pytest.raises(KeyProviderLocked):
+        provider.unwrap(wrapped, CONTEXT)
+    with pytest.raises(KeyProviderLocked):
+        provider.wrap(secrets.token_bytes(32), CONTEXT)
+    logs = capsys.readouterr().out
+    assert "kms_error" in logs and "ThrottlingException" in logs
+    assert "secret detail" not in logs
+
+
+def test_readiness_is_cached(kms: FakeKms) -> None:
+    now = [1000.0]
+    provider = AwsKmsKeyProvider(KEY_ARN, client=kms, clock=lambda: now[0])
+    assert [provider.is_unlocked() for _ in range(5)] == [True] * 5
+    assert [name for name, _ in kms.calls].count("describe_key") == 1
+    now[0] += 31
+    kms.enabled = False
+    assert provider.is_unlocked() is False
+    assert [name for name, _ in kms.calls].count("describe_key") == 2

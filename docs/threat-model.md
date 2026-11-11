@@ -29,14 +29,14 @@ document lists what it defends against, how, and what it deliberately does not d
 |---|---|---|
 | Stolen database dump | Values are AES-256-GCM ciphertext; data keys are wrapped by a master key that is not in the database | `crypto/` |
 | Ciphertext or wrapped key moved between tenants, tokens or versions | Tenant, token, type and key version are bound in as associated data, so decryption fails | `crypto/values.py`, `crypto/tenant_keys.py` |
-| One tenant reads another's rows through an application bug | Forced PostgreSQL row-level security on every tenant table, keyed on a transaction-local setting; the key ring also refuses to release a tenant's keys outside that tenant's context | migrations, `db/session.py` |
+| One tenant reads another's rows through an application bug | Forced PostgreSQL row-level security on every table holding tenant data, keyed on a transaction-local setting. The `tenants` registry (name and wrapped lookup key) is **not** under row-level security, so the key ring separately refuses to release a tenant's keys outside that tenant's context. `api_keys` and `console_sessions` each have one extra select-only policy so a presented key prefix or session hash can be looked up before the tenant is known | migrations, `db/session.py`, `crypto/tenant_keys.py` |
 | Leaked API key | Hashed at rest, scoped, revocable, `last_used_at` recorded; deny-by-default policies limit what it can read | `tenants/api_keys.py`, `policy/` |
 | Guessing which tokens exist | Denied and unknown tokens return the same `not_available` result | `vault/service.py` |
 | Values leaking through errors or logs | Validation errors never include input; database errors are logged without their message or parameters; a log processor redacts sensitive keys, API keys and subject IDs in URL paths | `errors.py`, `logs.py` |
 | Insider edits or deletes audit entries | Per-tenant hash chain; the application role can only insert and select; `verify` pinpoints the first broken entry | `audit/log.py` |
 | Insider rewrites the whole audit log, or truncates the newest entries | Detectable only against an anchor (entry number and hash) kept outside the database; `verify` accepts one | `audit/log.py` |
 | Console session theft, CSRF, clickjacking, XSS | Hashed server-side sessions in `__Host-` cookies (HttpOnly, Secure, SameSite=Strict); CSRF token on every POST; TOTP second factor; no JavaScript and a `default-src 'none'` CSP; auto-escaped templates; frame and referrer headers | `console/`, `middleware.py` |
-| Password guessing | Argon2id; five failures lock the account for 15 minutes; logins are rate limited per client and per account | `console/auth.py` |
+| Password guessing | Argon2id; five failures lock the account for 15 minutes; logins are rate limited per account and per client address (behind a reverse proxy this needs `--forwarded-allow-ips`, otherwise all clients share one address) | `console/auth.py`, `console/routes.py` |
 | Resource exhaustion by anonymous clients | Request bodies capped before parsing; per-key API rate limit; login throttle; password hashing runs with no database connection held | `middleware.py`, `api/ratelimit.py` |
 | Tampered master key file | Authenticated encryption; KDF cost parameters are bounded before use | `crypto/master_key.py` |
 
@@ -46,6 +46,8 @@ document lists what it defends against, how, and what it deliberately does not d
   server). Unwrapped keys live in memory while the service runs.
 - **A malicious operator** who holds the master key and database owner credentials.
 - **Network-level denial of service.** Rate limits are in-process and per instance.
+- **KMS outages.** With the KMS provider, an unreachable or throttled KMS makes requests
+  fail with 503 until it recovers; calls have short timeouts and readiness is cached.
 - **Account lockout as denial of service.** Anyone who knows a tenant name and e-mail can keep
   that console account locked; operators recover it with `securedb unlock-user`.
 - **Deployment hardening**: TLS termination, host security, backups and secret distribution are

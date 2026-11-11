@@ -15,8 +15,10 @@ that API key's policy. Every access is recorded in a tamper-evident audit log.
 - **Envelope encryption**: AES-256-GCM with a data key per tenant, wrapped by a master key held
   in the OS keychain, a passphrase-protected file, or AWS KMS. Each ciphertext is bound to its
   tenant, token, type and key version.
-- **Tenant isolation in the database**: forced PostgreSQL row-level security on every tenant
-  table, plus a least-privilege application role.
+- **Tenant isolation in the database**: forced PostgreSQL row-level security on every table
+  that holds tenant data (keys, tokens, policies, audit log, console users and sessions), plus
+  a least-privilege application role. The small `tenants` registry itself is not under
+  row-level security; the key ring refuses to release a tenant's keys outside its context.
 - **Policies per API key**: allow, mask or deny for each field type; deny by default; scoped,
   revocable keys; rate limiting.
 - **Tamper-evident audit log**: a per-tenant hash chain written in the same transaction as each
@@ -24,7 +26,7 @@ that API key's policy. Every access is recorded in a tamper-evident audit log.
 - **DPDP data-subject rights**: erasure and export per subject, including values shared by
   several people.
 - **Key rotation**: data-key rotation with resumable re-encryption beside live traffic, and
-  crash-safe master-key rotation.
+  crash-safe master-key rotation (OS-keychain store).
 - **Admin console**: password + TOTP sign-in, owner and viewer roles, and no JavaScript.
 
 ## Architecture
@@ -63,9 +65,16 @@ uv run securedb seed-demo                     # two demo tenants, API keys, cons
 uv run securedb serve                         # http://127.0.0.1:8000
 ```
 
-`seed-demo` prints two API keys per tenant, a sample token, and the console sign-in details.
-Add the printed `otpauth://` link to an authenticator app to sign in at
-`http://127.0.0.1:8000/console`. The API reference is at `/docs` in the dev environment.
+`seed-demo` asks for a password for the demo console users (at least 12 characters), then
+prints two API keys per tenant, a sample token, and the console sign-in details. To sign in at
+`http://127.0.0.1:8000/console`, add the account to an authenticator app using the `secret=`
+value from the printed `otpauth://` link as the setup key. The API reference is at `/docs` in
+the dev environment.
+
+Notes: the console's cookies are `Secure`; Chromium and Firefox accept them on
+`http://127.0.0.1`, other browsers may need HTTPS. With `SECUREDB_MASTER_KEY_STORE=kms`, skip
+`securedb init`. Behind a reverse proxy, start the server with `--forwarded-allow-ips` so
+per-client login limits and HSTS see the real client and scheme.
 
 ## Try the API
 

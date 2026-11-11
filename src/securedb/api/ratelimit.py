@@ -18,12 +18,14 @@ class FixedWindowRateLimiter:
         limit: int,
         window_seconds: int = 60,
         clock: Callable[[], float] = time.monotonic,
+        message: str | None = None,
     ) -> None:
         if limit < 1 or window_seconds < 1:
             raise ValueError("limit and window_seconds must be positive")
         self._limit = limit
         self._window = window_seconds
         self._clock = clock
+        self._message = message
         self._counts: dict[str, tuple[int, int]] = {}
         self._lock = threading.Lock()
 
@@ -41,4 +43,4 @@ class FixedWindowRateLimiter:
                 self._counts = {k: v for k, v in self._counts.items() if v[0] == window}
         if count > self._limit:
             retry_after = math.ceil((window + 1) * self._window - now)
-            raise RateLimited(retry_after=max(retry_after, 1))
+            raise RateLimited(retry_after=max(retry_after, 1), detail=self._message)

@@ -1,5 +1,6 @@
 """Server-rendered admin console (no JavaScript; every state change is a CSRF-checked POST)."""
 
+import hashlib
 import hmac
 import secrets
 import uuid
@@ -155,9 +156,12 @@ def login(  # nosec B107
     expected = request.cookies.get(PRE_LOGIN_COOKIE)
     _check_csrf(expected, csrf_token)
     # Throttle before any password hashing: per client and per account.
-    limiter: FixedWindowRateLimiter = request.app.state.login_limiter
-    limiter.hit(f"ip:{request.client.host if request.client else 'unknown'}")
-    limiter.hit(f"user:{tenant.strip()}|{email.strip().lower()}")
+    # Behind a reverse proxy, run with --forwarded-allow-ips so this is the real client.
+    ip_limiter: FixedWindowRateLimiter = request.app.state.login_ip_limiter
+    ip_limiter.hit(request.client.host if request.client else "unknown")
+    account = f"{tenant.strip()}|{email.strip().lower()}".encode()
+    account_limiter: FixedWindowRateLimiter = request.app.state.login_limiter
+    account_limiter.hit(hashlib.sha256(account).hexdigest())  # fixed-size key
     user = auth.check_password(_db(request), tenant, email, password)
     if user is None:
         return _page("login.html", request, status=401, csrf_token=expected, error=LOGIN_ERROR)

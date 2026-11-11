@@ -86,3 +86,12 @@ def test_init_file_store_rejects_short_passphrase(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "at least 12" in result.output
     assert not path.exists()
+
+
+def test_serve_can_trust_a_reverse_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _capture_uvicorn(monkeypatch)
+    result = runner.invoke(cli.app, ["serve", "--forwarded-allow-ips", "10.0.0.5"])
+    assert result.exit_code == 0, result.output
+    [(_, kwargs)] = calls
+    assert kwargs["forwarded_allow_ips"] == "10.0.0.5"
+    assert kwargs["proxy_headers"] is True

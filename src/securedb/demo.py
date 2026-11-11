@@ -2,12 +2,17 @@
 console owner each. Shows masking per key and isolation between tenants."""
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from sqlalchemy import select
+
 from securedb.audit.log import Actor
-from securedb.console.auth import create_console_user
+from securedb.console.auth import MIN_PASSWORD_LENGTH, create_console_user
 from securedb.crypto.tenant_keys import KeyRing
+from securedb.db.models import Tenant
 from securedb.db.session import Database
+from securedb.errors import Conflict
 from securedb.policy.engine import Action, Effect, set_policy
 from securedb.tenants.api_keys import AuthenticatedKey, Scope, issue_api_key
 from securedb.tenants.service import create_tenant
@@ -46,7 +51,7 @@ def _aadhaar(base: str) -> str:
 
 
 def _customers(index: int) -> list[tuple[str, list[TokenizeItem]]]:
-    """Two made-up customers per tenant. None of these values belong to real people."""
+    """Two made-up customers per tenant. Any resemblance to real identifiers is coincidental."""
     n = index + 1
     return [
         (
@@ -73,8 +78,25 @@ def _customers(index: int) -> list[tuple[str, list[TokenizeItem]]]:
     ]
 
 
-def seed_demo(db: Database, keyring: KeyRing, console_password: str) -> DemoResult:
-    """Create the demo tenants. Raises Conflict if they already exist."""
+def seed_demo(
+    db: Database,
+    keyring: KeyRing,
+    console_password: str,
+    *,
+    on_tenant: Callable[[DemoTenant], None] | None = None,
+) -> DemoResult:
+    """Create the demo tenants.
+
+    Everything that can be checked is checked before the first write, so a bad password
+    or an existing demo tenant never leaves a half-seeded database. `on_tenant` is called
+    as soon as each tenant is complete (its secrets are only available then).
+    """
+    if len(console_password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    with db.session() as session:
+        existing = session.scalars(select(Tenant.name).where(Tenant.name.in_(DEMO_TENANTS))).all()
+    if existing:
+        raise Conflict(f"Demo tenants already exist: {', '.join(sorted(existing))}.")
     service = TokenService(keyring)
     tenants: list[DemoTenant] = []
     for index, name in enumerate(DEMO_TENANTS):
@@ -101,17 +123,19 @@ def seed_demo(db: Database, keyring: KeyRing, console_password: str) -> DemoResu
                     session,
                     acting,
                     [TokenizeItem(i.type, i.value, subject) for i in items],
+                    actor=ACTOR,
                 )
             sample.extend(result.token for result in results)
-        tenants.append(
-            DemoTenant(
-                id=tenant_id,
-                name=name,
-                console_email=email,
-                totp_uri=totp_uri,
-                backend_key=backend.plaintext,
-                support_key=support.plaintext,
-                sample_tokens=sample,
-            )
+        tenant = DemoTenant(
+            id=tenant_id,
+            name=name,
+            console_email=email,
+            totp_uri=totp_uri,
+            backend_key=backend.plaintext,
+            support_key=support.plaintext,
+            sample_tokens=sample,
         )
+        tenants.append(tenant)
+        if on_tenant is not None:
+            on_tenant(tenant)
     return DemoResult(tenants)

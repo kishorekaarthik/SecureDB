@@ -34,23 +34,27 @@ contexts can never encode to the same bytes.
 | Ciphertext | Bound to |
 |---|---|
 | Token value | tenant ID, token, field type, DEK version |
-| Wrapped DEK | purpose `dek`, tenant ID, DEK version, master key ID |
-| Wrapped lookup key | purpose `lookup`, tenant ID, master key ID |
+| Wrapped DEK | purpose `dek`, tenant ID, DEK version, and (local providers) master key ID |
+| Wrapped lookup key | purpose `lookup`, tenant ID, and (local providers) master key ID |
 | Console TOTP secret | tenant ID, `console_user:<id>`, field `console_totp`, DEK version |
 | Master key file | key ID (KDF parameters are implicitly authenticated: changing them changes the derived key) |
 
 Consequences, each covered by tests: a value copied to another tenant, token or type fails to
 decrypt; a wrapped key copied to another tenant or version fails to unwrap.
 
-With AWS KMS the wrap context is sent as the KMS *encryption context*, so KMS enforces the
-same binding and records it in CloudTrail.
+With AWS KMS the purpose, tenant and version are sent as the KMS *encryption context*, so KMS
+enforces the same binding and records it in CloudTrail. The master key is bound by KMS itself
+(the ciphertext identifies its key, and the provider pins `KeyId` on decrypt), so no master
+key ID is added to the context.
 
 ## Nonces and the reason for rotation
 
-Nonces are random 96-bit values. With random nonces, the chance of a repeat under one key
-becomes non-negligible as the number of encryptions approaches 2^32. Each tenant has its own
-DEK, and `rotate-dek` starts a fresh one, so the budget applies per tenant per key version.
-Rotate a tenant's DEK well before it has encrypted that many values.
+Nonces are random 96-bit values. NIST SP 800-38D limits a key used with random nonces to
+2^32 encryptions, which keeps the probability of a nonce repeat below about 2^-32. Each tenant
+has its own DEK and `rotate-dek` starts a fresh one, so the limit applies per tenant per key
+version. Everything encrypted under a DEK counts: token values, console TOTP secrets, and
+values re-encrypted onto it. The vault does not count encryptions, so rotate on a schedule
+sized to the tenant's volume.
 
 ## Tokens and deduplication
 

@@ -95,3 +95,56 @@ def test_seed_demo_command(
     assert result.output.count("sdb_live_") == 4
     assert result.output.count("otpauth://") == 2
     assert PASSWORD not in result.output
+
+
+def _tenant_names(database: Database) -> list[str]:
+    from sqlalchemy import select
+
+    from securedb.db.models import Tenant
+
+    with database.session() as session:
+        return sorted(session.scalars(select(Tenant.name)).all())
+
+
+def test_short_password_is_rejected_before_anything_is_created(
+    database: Database, key_provider: LocalKeyProvider
+) -> None:
+    with pytest.raises(ValueError, match="at least 12"):
+        seed_demo(database, KeyRing(key_provider), "short")
+    assert _tenant_names(database) == []
+
+
+def test_existing_demo_tenant_is_detected_before_anything_is_created(
+    database: Database, key_provider: LocalKeyProvider
+) -> None:
+    from securedb.audit.log import Actor
+    from securedb.tenants.service import create_tenant
+
+    create_tenant(database, KeyRing(key_provider), DEMO_TENANTS[1], actor=Actor.system("test"))
+    with pytest.raises(Conflict):
+        seed_demo(database, KeyRing(key_provider), PASSWORD)
+    assert _tenant_names(database) == [DEMO_TENANTS[1]]
+
+
+def test_each_tenant_is_reported_as_soon_as_it_exists(
+    database: Database, key_provider: LocalKeyProvider
+) -> None:
+    seen: list[str] = []
+    seed_demo(database, KeyRing(key_provider), PASSWORD, on_tenant=lambda t: seen.append(t.name))
+    assert seen == list(DEMO_TENANTS)
+
+
+def test_seeded_tokens_are_attributed_to_the_seeder(
+    database: Database, key_provider: LocalKeyProvider
+) -> None:
+    from securedb.audit.log import list_entries
+
+    result = seed_demo(database, KeyRing(key_provider), PASSWORD)
+    tenant = result.tenants[0]
+    with database.tenant_session(tenant.id) as session:
+        tokenizes = [
+            e for e in list_entries(session, tenant.id, limit=200) if e.action == "tokenize"
+        ]
+    assert tokenizes and all(
+        (e.actor_type, e.actor_id) == ("system", "seed-demo") for e in tokenizes
+    )

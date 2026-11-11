@@ -11,8 +11,9 @@ database.
 ## Why
 
 - Writing in the same transaction means there is never an operation without its entry or an
-  entry without its operation. Rejected requests, which roll back, are recorded in a separate
-  transaction.
+  entry without its operation. Tokenize requests rejected by policy or validation, which
+  roll back, are recorded in a separate transaction. Requests refused earlier (a bad API key,
+  a missing scope, a malformed body) are not audited.
 - A compromised application cannot rewrite history: it has no UPDATE or DELETE privilege.
 - A chain makes edits, middle deletions and reordering detectable by recomputation.
 - Entries hold token IDs, counts and outcomes, never values, and identify erased subjects by a

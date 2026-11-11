@@ -26,8 +26,9 @@ original design called for HTMX. Two related deviations are recorded here as wel
 - **The playground** acts through a selected API key's scopes and policies, but the audit
   entry names the console user and records the key as `via_key`.
 - **Layering**: the design said the console would not touch database models directly. The
-  console's read-only page queries do use models directly, inside tenant-scoped sessions. All
-  state changes go through the same audited service functions as the API and CLI.
+  console's read-only page queries do use models directly, inside tenant-scoped sessions.
+  Changes to keys, policies and encryption go through the same audited service functions as
+  the API and CLI. Sign-in attempts are audited; session creation and sign-out are not.
 
 ## Cost
 

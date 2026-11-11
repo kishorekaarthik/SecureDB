@@ -461,3 +461,33 @@ def test_non_ascii_csrf_token_is_a_403(console: Console) -> None:
     console.login()
     response = console.client.post("/console/keys", data={"name": "x", "csrf_token": "١٢٣"})
     assert response.status_code == 403
+
+
+def test_many_accounts_from_one_address_are_not_blocked_by_the_account_limit(
+    console: Console,
+) -> None:
+    token = console.csrf("/console/login")
+    statuses = [
+        console.client.post(
+            "/console/login",
+            data={"tenant": "acme", "email": f"user{i}@example.com", "password": "nope nope nope",
+                  "csrf_token": token},
+        ).status_code
+        for i in range(15)
+    ]  # fmt: skip
+    assert statuses == [401] * 15
+
+
+def test_login_throttle_message_is_about_signing_in(console: Console) -> None:
+    token = console.csrf("/console/login")
+    form = {
+        "tenant": "acme",
+        "email": "owner@example.com",
+        "password": "nope nope nope",
+        "csrf_token": token,
+    }
+    for _ in range(11):
+        response = console.client.post("/console/login", data=form)
+    assert response.status_code == 429
+    assert "sign-in attempts" in response.json()["detail"]
+    assert "API key" not in response.text

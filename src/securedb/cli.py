@@ -28,7 +28,7 @@ from securedb.crypto.rotation import reencrypt, rotate_dek, rotate_master
 from securedb.crypto.tenant_keys import KeyRing
 from securedb.db.models import ApiKey
 from securedb.db.session import Database
-from securedb.demo import seed_demo
+from securedb.demo import DemoTenant, seed_demo
 from securedb.errors import DomainError, KeyProviderLocked, NotFound
 from securedb.policy.engine import Action, Effect, set_policy
 from securedb.tenants.api_keys import Scope, issue_api_key, revoke_api_key
@@ -156,6 +156,13 @@ def serve(
     host: Annotated[str, typer.Option(help="Interface to bind.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
     reload: Annotated[bool, typer.Option(help="Auto-reload on code changes (dev).")] = False,
+    forwarded_allow_ips: Annotated[
+        str,
+        typer.Option(
+            help="Reverse-proxy addresses whose X-Forwarded-* headers are trusted "
+            "(comma-separated). Needed behind a proxy for per-client login limits and HSTS."
+        ),
+    ] = "127.0.0.1",
 ) -> None:
     """Run the API server."""
     uvicorn.run(
@@ -165,6 +172,8 @@ def serve(
         port=port,
         reload=reload,
         log_config=None,
+        proxy_headers=True,
+        forwarded_allow_ips=forwarded_allow_ips,
     )
 
 
@@ -288,9 +297,8 @@ def rotate_master_command() -> None:
 
     if _master_key_store() != "keychain":
         typer.echo(
-            "Error: rotate-master supports the OS-keychain store only. For a file store: "
-            "back up the key file and database, create a new key file, re-wrap with it, "
-            "then point SECUREDB_MASTER_KEY_FILE at the new file (see docs).",
+            "Error: rotate-master supports the OS-keychain store only. Rotating a file or "
+            "KMS master key is not automated yet.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -364,15 +372,16 @@ def seed_demo_command() -> None:
         "Password for the demo console users", hide_input=True, confirmation_prompt=True
     )
 
+    def show(tenant: DemoTenant) -> None:
+        typer.echo(f"\nTenant {tenant.name}")
+        typer.echo(f"  backend key (full values):   {tenant.backend_key}")
+        typer.echo(f"  support key (masked values): {tenant.support_key}")
+        typer.echo(f"  console sign-in: {tenant.console_email}")
+        typer.echo(f"  authenticator setup (shown once): {tenant.totp_uri}")
+        typer.echo(f"  sample token: {tenant.sample_tokens[0]}")
+
     def run(db: Database, provider: KeyProvider) -> None:
-        result = seed_demo(db, KeyRing(_unlocked(provider)), password)
-        for tenant in result.tenants:
-            typer.echo(f"\nTenant {tenant.name}")
-            typer.echo(f"  backend key (full values):   {tenant.backend_key}")
-            typer.echo(f"  support key (masked values): {tenant.support_key}")
-            typer.echo(f"  console sign-in: {tenant.console_email}")
-            typer.echo(f"  authenticator setup (shown once): {tenant.totp_uri}")
-            typer.echo(f"  sample token: {tenant.sample_tokens[0]}")
+        seed_demo(db, KeyRing(_unlocked(provider)), password, on_tenant=show)
         typer.echo("\nStart the server with `securedb serve`, then open /console or /docs.")
 
     _with_database(run)
